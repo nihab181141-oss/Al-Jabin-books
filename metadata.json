@@ -1,0 +1,6 @@
+{
+  "name": "Al Jabin Publications",
+  "description": "Premium independent publishing house offering thoughtful ebooks, practical guides, and enduring ideas for readers in Bangladesh and worldwide.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

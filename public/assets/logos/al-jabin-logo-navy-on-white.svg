@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 130" width="460" height="130" style="background-color: #FFFFFF;">
+  <rect width="100%" height="100%" fill="#FFFFFF"/>
+  <g transform="translate(230, 52)" text-anchor="middle">
+    <!-- Brand Name AL JABIN in tall high-contrast serif proportions in #171D50 -->
+    <text y="0" fill="#171D50" font-family="'Bodoni Moda', 'Didot', 'Playfair Display', 'Times New Roman', serif" font-size="34" font-weight="600" letter-spacing="4.5" text-anchor="middle">AL JABIN</text>
+    <!-- Geometric editorial divider -->
+    <line x1="-90" y1="18" x2="90" y2="18" stroke="#171D50" stroke-opacity="0.3" stroke-width="0.8"/>
+    <circle cx="0" cy="18" r="2" fill="#171D50"/>
+    <!-- Sub-mark PUBLICATIONS with open tracking -->
+    <text y="38" fill="#171D50" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="10.5" font-weight="500" letter-spacing="7" text-anchor="middle">PUBLICATIONS</text>
+  </g>
+</svg>

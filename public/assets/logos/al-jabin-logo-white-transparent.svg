@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 130" width="460" height="130">
+  <g transform="translate(230, 52)" text-anchor="middle">
+    <text y="0" fill="#FFFFFF" font-family="'Bodoni Moda', 'Didot', 'Playfair Display', 'Times New Roman', serif" font-size="34" font-weight="600" letter-spacing="4.5" text-anchor="middle">AL JABIN</text>
+    <line x1="-90" y1="18" x2="90" y2="18" stroke="#FFFFFF" stroke-opacity="0.4" stroke-width="0.8"/>
+    <circle cx="0" cy="18" r="2" fill="#FFFFFF"/>
+    <text y="38" fill="#FFFFFF" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="10.5" font-weight="500" letter-spacing="7" text-anchor="middle">PUBLICATIONS</text>
+  </g>
+</svg>
