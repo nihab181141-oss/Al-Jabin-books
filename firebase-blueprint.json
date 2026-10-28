@@ -1,0 +1,141 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Ebook publication record managed by publisher",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Title of the publication" },
+        "slug": { "type": "string", "description": "URL-friendly slug" },
+        "description": { "type": "string", "description": "Detailed book description" },
+        "shortDescription": { "type": "string", "description": "Summary blurb" },
+        "author": { "type": "string", "description": "Author or editorial curator" },
+        "language": { "type": "string", "description": "Language of edition" },
+        "category": { "type": "string", "description": "Literary or knowledge category" },
+        "coverImage": { "type": "string", "description": "Cover artwork URL" },
+        "priceBDT": { "type": "number", "description": "Price in Bangladeshi Taka" },
+        "priceUSD": { "type": "number", "description": "Optional price in USD" },
+        "originalFileStoragePath": { "type": "string", "description": "Private storage path to DRM-free original" },
+        "previewFileStoragePath": { "type": "string", "description": "Public sample excerpt path" },
+        "isPublished": { "type": "boolean", "description": "Publication availability status" },
+        "createdAt": { "type": "string", "description": "ISO timestamp of creation" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last update" }
+      },
+      "required": ["title", "author", "category", "priceBDT", "isPublished"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Customer and administrator account profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "displayName": { "type": "string", "description": "Customer display name" },
+        "email": { "type": "string", "description": "Customer email address" },
+        "role": { "type": "string", "enum": ["customer", "admin"], "description": "Access control role" },
+        "createdAt": { "type": "string", "description": "ISO timestamp of registration" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last update" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer purchase transaction for digital volumes",
+      "type": "object",
+      "properties": {
+        "orderNumber": { "type": "string", "description": "Unique order reference" },
+        "userId": { "type": "string", "description": "Buyer user UID or guest identifier" },
+        "customerName": { "type": "string", "description": "Full name of buyer" },
+        "customerEmail": { "type": "string", "description": "Buyer verified email address" },
+        "customerPhone": { "type": "string", "description": "Buyer contact phone number" },
+        "items": { "type": "string", "description": "JSON string of validated order line items" },
+        "subtotal": { "type": "number", "description": "Subtotal before discounts" },
+        "discount": { "type": "number", "description": "Discount applied from coupons" },
+        "total": { "type": "number", "description": "Final server-calculated charge" },
+        "currency": { "type": "string", "enum": ["BDT", "USD"], "description": "Order currency" },
+        "paymentProvider": { "type": "string", "enum": ["sslcommerz", "manual_demo"], "description": "Gateway provider" },
+        "paymentStatus": { "type": "string", "enum": ["pending", "verified", "failed", "cancelled"], "description": "Payment verification state" },
+        "fulfillmentStatus": { "type": "string", "enum": ["pending", "fulfilled", "failed"], "description": "Digital delivery state" },
+        "createdAt": { "type": "string", "description": "ISO timestamp of creation" },
+        "paidAt": { "type": "string", "description": "ISO timestamp when payment was validated" },
+        "deliveredAt": { "type": "string", "description": "ISO timestamp when digital access was granted" }
+      },
+      "required": ["orderNumber", "customerEmail", "total", "currency", "paymentStatus", "fulfillmentStatus"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Server-side payment verification log",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "description": "Referenced order ID" },
+        "provider": { "type": "string", "description": "Payment gateway provider name" },
+        "providerTransactionId": { "type": "string", "description": "Unique transaction identity from provider" },
+        "amount": { "type": "number", "description": "Amount charged" },
+        "currency": { "type": "string", "description": "Currency used" },
+        "status": { "type": "string", "description": "Provider response status" },
+        "validationStatus": { "type": "string", "enum": ["VALID", "FAILED", "PENDING"], "description": "Server API validation result" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "validatedAt": { "type": "string", "description": "Validation timestamp" }
+      },
+      "required": ["orderId", "provider", "amount", "currency", "validationStatus"]
+    },
+    "Download": {
+      "title": "Download",
+      "description": "Secure, tokenized digital ebook delivery entitlement",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "description": "Associated verified order" },
+        "userId": { "type": "string", "description": "Entitled user UID if registered" },
+        "customerEmail": { "type": "string", "description": "Entitled customer email" },
+        "productId": { "type": "string", "description": "Purchased publication ID" },
+        "tokenHash": { "type": "string", "description": "Opaque access token" },
+        "expiresAt": { "type": "string", "description": "ISO timestamp when link expires" },
+        "downloadCount": { "type": "number", "description": "Times accessed" },
+        "maxDownloads": { "type": "number", "description": "Maximum allowed downloads" },
+        "createdAt": { "type": "string", "description": "Timestamp created" },
+        "revokedAt": { "type": "string", "description": "Optional revocation timestamp" }
+      },
+      "required": ["orderId", "customerEmail", "productId", "tokenHash", "expiresAt"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Promotional discount codes",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "description": "Uppercase coupon code" },
+        "discountType": { "type": "string", "enum": ["percentage", "fixed"], "description": "Type of discount" },
+        "discountValue": { "type": "number", "description": "Discount amount or percentage" },
+        "minimumOrderValue": { "type": "number", "description": "Minimum subtotal required" },
+        "usageLimit": { "type": "number", "description": "Maximum total uses permitted" },
+        "usageCount": { "type": "number", "description": "Times redeemed" },
+        "isActive": { "type": "boolean", "description": "Coupon status" }
+      },
+      "required": ["code", "discountType", "discountValue", "isActive"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Collection of published and draft publications"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Customer and administrative user records"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Customer purchase orders and status records"
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Validated payment transaction records"
+    },
+    "/downloads/{downloadId}": {
+      "schema": "Download",
+      "description": "Secure digital book download entitlement tokens"
+    },
+    "/coupons/{couponId}": {
+      "schema": "Coupon",
+      "description": "Store promo and discount codes"
+    }
+  }
+}

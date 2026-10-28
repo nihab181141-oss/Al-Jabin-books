@@ -14,6 +14,7 @@ import { OrderSuccessModal } from './components/checkout/OrderSuccessModal';
 import { OrderLookupModal } from './components/orders/OrderLookupModal';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { ReadingStudioModal } from './components/home/ReadingStudioModal';
+import { SSLCommerzSimulator } from './components/checkout/SSLCommerzSimulator';
 import { Toast } from './components/ui/Toast';
 
 export default function App() {
@@ -70,6 +71,7 @@ export default function App() {
           isOpen={isReadingStudioOpen}
           onClose={() => setIsReadingStudioOpen(false)}
         />
+        <SSLCommerzSimulator />
         <Toast />
 
       </div>

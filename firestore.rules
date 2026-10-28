@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Products: Anyone can read published books; only admins can write
+    match /products/{productId} {
+      allow get: if isValidId(productId) && (resource.data.isPublished == true || isAdmin());
+      allow list: if resource.data.isPublished == true || isAdmin();
+      allow create, update, delete: if isValidId(productId) && isAdmin();
+    }
+
+    // Users: Users can read and update their own profile; admins have full access
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      // Allow users to create their own record on signup, but cannot set role to admin directly
+      allow create: if isValidId(userId) && isOwner(userId) && request.resource.data.role != 'admin';
+      allow update: if isValidId(userId) && (
+        (isOwner(userId) && request.resource.data.role == resource.data.role) ||
+        isAdmin()
+      );
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // Orders: Customers can read only their own orders; writes are strictly controlled
+    match /orders/{orderId} {
+      allow get: if isValidId(orderId) && (
+        isAdmin() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid)
+      );
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      // Creation and updates are server-authoritative to prevent price manipulation
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Payments: Strictly read by admin or order owner; written only by server backend
+    match /payments/{paymentId} {
+      allow get: if isValidId(paymentId) && (
+        isAdmin() ||
+        (isSignedIn() && get(/databases/$(database)/documents/orders/$(resource.data.orderId)).data.userId == request.auth.uid)
+      );
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Downloads: Entitlement tokens issued and modified by server only
+    match /downloads/{downloadId} {
+      allow get: if isValidId(downloadId) && (
+        isAdmin() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid)
+      );
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Coupons: Public can check active coupon codes; only admins can create/update
+    match /coupons/{couponId} {
+      allow get: if isValidId(couponId) && (resource.data.isActive == true || isAdmin());
+      allow list: if resource.data.isActive == true || isAdmin();
+      allow write: if isValidId(couponId) && isAdmin();
+    }
+  }
+}

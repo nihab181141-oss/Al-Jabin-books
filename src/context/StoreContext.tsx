@@ -1,14 +1,41 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Book, CartItem, Order, Coupon, Subscriber, PaymentMethod } from '../types';
-import { INITIAL_BOOKS, INITIAL_COUPONS } from '../data/books';
+import {
+  Book,
+  CartItem,
+  Order,
+  Coupon,
+  Subscriber,
+  PaymentMethod,
+  EntitledDownload,
+  CustomerProfile,
+} from '../types';
+import { INITIAL_COUPONS } from '../data/books';
+import { auth, db } from '../lib/firebase';
+import {
+  User as FirebaseUser,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signOut,
+  updateProfile,
+} from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 interface StoreContextType {
+  // Books catalog
   books: Book[];
-  addBook: (book: Omit<Book, 'id'>) => void;
-  updateBook: (book: Book) => void;
-  deleteBook: (id: string) => void;
+  addBook: (book: Omit<Book, 'id'>) => Promise<void>;
+  updateBook: (book: Book) => Promise<void>;
+  deleteBook: (id: string) => Promise<void>;
   clearAllBooks: () => void;
-  
+  resetBooksToDefault: () => void;
+  selectedBook: Book | null;
+  setSelectedBook: (book: Book | null) => void;
+  previewSampleBook: Book | null;
+  setPreviewSampleBook: (book: Book | null) => void;
+
+  // Cart
   cart: CartItem[];
   addToCart: (book: Book, qty?: number) => void;
   removeFromCart: (bookId: string) => void;
@@ -19,16 +46,9 @@ interface StoreContextType {
   isCartOpen: boolean;
   setIsCartOpen: (open: boolean) => void;
 
+  // Checkout & Orders
   isCheckoutOpen: boolean;
   setIsCheckoutOpen: (open: boolean) => void;
-
-  coupons: Coupon[];
-  activeCoupon: Coupon | null;
-  applyCoupon: (code: string) => { success: boolean; message: string };
-  removeCoupon: () => void;
-  addCoupon: (coupon: Coupon) => void;
-  toggleCoupon: (code: string) => void;
-
   orders: Order[];
   createOrder: (details: {
     customerName: string;
@@ -36,34 +56,45 @@ interface StoreContextType {
     customerPhone: string;
     paymentMethod: PaymentMethod;
     transactionId?: string;
-  }) => Order;
+  }) => Promise<{ order: Order; gatewayUrl?: string }>;
   updateOrderStatus: (orderId: string, status: 'pending' | 'verified' | 'failed') => void;
-  lookupOrder: (orderId: string) => Order | undefined;
+  lookupOrder: (orderId: string) => Promise<Order | undefined>;
   clearAllOrders: () => void;
+  confirmedOrder: Order | null;
+  setConfirmedOrder: (order: Order | null) => void;
 
+  // Coupons
+  coupons: Coupon[];
+  activeCoupon: Coupon | null;
+  applyCoupon: (code: string) => Promise<{ success: boolean; message: string }>;
+  removeCoupon: () => void;
+  addCoupon: (coupon: Coupon) => void;
+  toggleCoupon: (code: string) => void;
+
+  // Customer Authentication & Library
+  currentUser: FirebaseUser | null;
+  userProfile: CustomerProfile | null;
+  authLoading: boolean;
+  loginWithEmail: (e: string, p: string) => Promise<void>;
+  registerWithEmail: (e: string, p: string, name?: string) => Promise<void>;
+  resetUserPassword: (e: string) => Promise<void>;
+  logoutUser: () => Promise<void>;
+  userLibrary: EntitledDownload[];
+  refreshUserLibrary: () => Promise<void>;
+
+  // Newsletter
   subscribers: Subscriber[];
   subscribeNewsletter: (email: string) => { success: boolean; message: string };
   clearAllSubscribers: () => void;
 
-  resetBooksToDefault: () => void;
-
-  selectedBook: Book | null;
-  setSelectedBook: (book: Book | null) => void;
-  
-  previewSampleBook: Book | null;
-  setPreviewSampleBook: (book: Book | null) => void;
-
-  confirmedOrder: Order | null;
-  setConfirmedOrder: (order: Order | null) => void;
-
-  // Custom brand logo support (with persistent fallback to canonical official assets)
+  // Custom Brand Logo Assets
   logoNavyOnWhite: string;
   logoWhiteOnNavy: string;
   setLogoNavyOnWhite: (url: string) => void;
   setLogoWhiteOnNavy: (url: string) => void;
   resetLogosToDefault: () => void;
 
-  // Notification toast
+  // Notification Toast
   toastMessage: string | null;
   showToast: (msg: string) => void;
 }
@@ -71,126 +102,95 @@ interface StoreContextType {
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_KEYS = {
-  BOOKS: 'aljabin_books_v3',
-  CART: 'aljabin_cart_v1',
-  ORDERS: 'aljabin_orders_v1',
-  COUPONS: 'aljabin_coupons_v1',
-  SUBSCRIBERS: 'aljabin_subscribers_v1',
-  LOGO_NAVY: 'aljabin_logo_navy_v1',
-  LOGO_WHITE: 'aljabin_logo_white_v1',
+  BOOKS: 'aljabin_books_v4',
+  CART: 'aljabin_cart_v2',
+  ORDERS: 'aljabin_orders_v2',
+  COUPONS: 'aljabin_coupons_v2',
+  SUBSCRIBERS: 'aljabin_subscribers_v2',
+  LOGO_NAVY: 'aljabin_logo_navy_v2',
+  LOGO_WHITE: 'aljabin_logo_white_v2',
 };
 
 const DEFAULT_LOGO_NAVY = '/assets/logos/al-jabin-logo-navy-on-white.svg';
 const DEFAULT_LOGO_WHITE = '/assets/logos/al-jabin-logo-white-on-navy.svg';
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Books state - cleaned of any fake or mock book items
+  // Books State
   const [books, setBooks] = useState<Book[]>(() => {
     try {
-      // Clean legacy cache keys containing mock books
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('aljabin_books_v1');
-        localStorage.removeItem('aljabin_books_v2');
-      }
       const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.BOOKS);
-      if (saved) {
-        const parsed: Book[] = JSON.parse(saved);
-        // Exclude any legacy mock book IDs
-        return parsed.filter((b) => !b.id.startsWith('book-0'));
-      }
-      return INITIAL_BOOKS;
+      if (saved) return JSON.parse(saved);
     } catch {
-      return INITIAL_BOOKS;
+      // fallback
     }
+    return [];
   });
 
-  // Cart state
+  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  const [previewSampleBook, setPreviewSampleBook] = useState<Book | null>(null);
+
+  // Cart State
   const [cart, setCart] = useState<CartItem[]>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.CART);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
   });
-
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
-  // Selected modals
-  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  const [previewSampleBook, setPreviewSampleBook] = useState<Book | null>(null);
+  // Coupons State
+  const [coupons, setCoupons] = useState<Coupon[]>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.COUPONS);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return INITIAL_COUPONS;
+  });
+  const [activeCoupon, setActiveCoupon] = useState<Coupon | null>(null);
+
+  // Orders State
+  const [orders, setOrders] = useState<Order[]>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.ORDERS);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
   const [confirmedOrder, setConfirmedOrder] = useState<Order | null>(null);
+
+  // Auth State
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [userProfile, setUserProfile] = useState<CustomerProfile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [userLibrary, setUserLibrary] = useState<EntitledDownload[]>([]);
+
+  // Newsletter Subscribers State
+  const [subscribers, setSubscribers] = useState<Subscriber[]>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.SUBSCRIBERS);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
+
+  // Logos
+  const [logoNavyOnWhite, setLogoNavyOnWhite] = useState<string>(() => {
+    return localStorage.getItem(LOCAL_STORAGE_KEYS.LOGO_NAVY) || DEFAULT_LOGO_NAVY;
+  });
+  const [logoWhiteOnNavy, setLogoWhiteOnNavy] = useState<string>(() => {
+    return localStorage.getItem(LOCAL_STORAGE_KEYS.LOGO_WHITE) || DEFAULT_LOGO_WHITE;
+  });
 
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage((current) => (current === msg ? null : current));
-    }, 3200);
   };
 
-  // Coupons
-  const [coupons, setCoupons] = useState<Coupon[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.COUPONS);
-      return saved ? JSON.parse(saved) : INITIAL_COUPONS;
-    } catch {
-      return INITIAL_COUPONS;
-    }
-  });
-
-  const [activeCoupon, setActiveCoupon] = useState<Coupon | null>(null);
-
-  // Orders
-  const [orders, setOrders] = useState<Order[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.ORDERS);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  // Newsletter Subscribers
-  const [subscribers, setSubscribers] = useState<Subscriber[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.SUBSCRIBERS);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  // Logos
-  const [logoNavyOnWhite, setLogoNavyOnWhiteState] = useState<string>(() => {
-    return localStorage.getItem(LOCAL_STORAGE_KEYS.LOGO_NAVY) || DEFAULT_LOGO_NAVY;
-  });
-
-  const [logoWhiteOnNavy, setLogoWhiteOnNavyState] = useState<string>(() => {
-    return localStorage.getItem(LOCAL_STORAGE_KEYS.LOGO_WHITE) || DEFAULT_LOGO_WHITE;
-  });
-
-  const setLogoNavyOnWhite = (url: string) => {
-    setLogoNavyOnWhiteState(url);
-    localStorage.setItem(LOCAL_STORAGE_KEYS.LOGO_NAVY, url);
-  };
-
-  const setLogoWhiteOnNavy = (url: string) => {
-    setLogoWhiteOnNavyState(url);
-    localStorage.setItem(LOCAL_STORAGE_KEYS.LOGO_WHITE, url);
-  };
-
-  const resetLogosToDefault = () => {
-    setLogoNavyOnWhiteState(DEFAULT_LOGO_NAVY);
-    setLogoWhiteOnNavyState(DEFAULT_LOGO_WHITE);
-    localStorage.removeItem(LOCAL_STORAGE_KEYS.LOGO_NAVY);
-    localStorage.removeItem(LOCAL_STORAGE_KEYS.LOGO_WHITE);
-  };
-
-  // Sync to LocalStorage
+  // Sync to local storage
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEYS.BOOKS, JSON.stringify(books));
   }, [books]);
@@ -207,11 +207,118 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem(LOCAL_STORAGE_KEYS.COUPONS, JSON.stringify(coupons));
   }, [coupons]);
 
+  // Sync products from server on mount
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEYS.SUBSCRIBERS, JSON.stringify(subscribers));
-  }, [subscribers]);
+    const fetchServerProducts = async () => {
+      try {
+        const res = await fetch('/api/products');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.products) && data.products.length > 0) {
+            setBooks(data.products);
+          }
+        }
+      } catch (e) {
+        // quiet fallback
+      }
+    };
+    fetchServerProducts();
+  }, []);
 
-  // Cart Calculations
+  // Firebase Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      if (user && user.email) {
+        try {
+          // Fetch or initialize user profile document in Firestore
+          const userDocRef = doc(db, 'users', user.uid);
+          const snap = await getDoc(userDocRef);
+          if (snap.exists()) {
+            setUserProfile(snap.data() as CustomerProfile);
+          } else {
+            const newProfile: CustomerProfile = {
+              uid: user.uid,
+              email: user.email,
+              displayName: user.displayName || user.email.split('@')[0],
+              role: user.email === 'admin@aljabinpublications.com' ? 'admin' : 'customer',
+              createdAt: new Date().toISOString(),
+            };
+            await setDoc(userDocRef, newProfile);
+            setUserProfile(newProfile);
+          }
+        } catch (err) {
+          console.warn('User profile sync:', err);
+        }
+        // Load user's purchased downloads
+        loadUserLibrary(user.email);
+      } else {
+        setUserProfile(null);
+        setUserLibrary([]);
+      }
+      setAuthLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const loadUserLibrary = async (email: string) => {
+    try {
+      const res = await fetch(`/api/user/library?email=${encodeURIComponent(email)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setUserLibrary(data.library || []);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch user library:', e);
+    }
+  };
+
+  const refreshUserLibrary = async () => {
+    if (currentUser?.email) {
+      await loadUserLibrary(currentUser.email);
+    }
+  };
+
+  // URL Parameters check for payment return callbacks
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const orderStatus = params.get('order_status');
+    const orderId = params.get('order_id');
+
+    if (orderStatus === 'success' && orderId) {
+      // Clear URL params cleanly
+      window.history.replaceState({}, '', window.location.pathname);
+      clearCart();
+
+      // Fetch confirmed order from backend
+      fetch(`/api/orders/${orderId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.order) {
+            setConfirmedOrder(data.order);
+            showToast('Payment verified! Your digital volume is available for instant download.');
+            if (currentUser?.email) {
+              refreshUserLibrary();
+            }
+          }
+        })
+        .catch(() => {
+          showToast('Payment succeeded! Digital entitlement generated.');
+        });
+    } else if (orderStatus === 'failed') {
+      window.history.replaceState({}, '', window.location.pathname);
+      showToast('Payment was not completed or was declined. You have not been charged.');
+    } else if (orderStatus === 'cancelled') {
+      window.history.replaceState({}, '', window.location.pathname);
+      showToast('Payment session was cancelled.');
+    }
+  }, [currentUser]);
+
+  // Cart calculations
   const cartSubtotal = cart.reduce((sum, item) => sum + item.book.price * item.quantity, 0);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -248,20 +355,36 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Coupons
-  const applyCoupon = (code: string) => {
+  const applyCoupon = async (code: string) => {
     const cleanCode = code.trim().toUpperCase();
-    const found = coupons.find((c) => c.code.toUpperCase() === cleanCode && c.isActive);
-    if (!found) {
-      return { success: false, message: 'Invalid or inactive promotional code.' };
+    try {
+      const res = await fetch('/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: cleanCode, subtotal: cartSubtotal }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const couponObj: Coupon = {
+          code: data.code,
+          discountPercentage: data.discountValue,
+          description: `${data.discountValue}% discount applied`,
+          isActive: true,
+        };
+        setActiveCoupon(couponObj);
+        return { success: true, message: `Applied ${data.code} (${data.discountValue}% discount)` };
+      } else {
+        return { success: false, message: data.error || 'Invalid coupon.' };
+      }
+    } catch {
+      // Local fallback
+      const found = coupons.find((c) => c.code.toUpperCase() === cleanCode && c.isActive);
+      if (found) {
+        setActiveCoupon(found);
+        return { success: true, message: `Applied ${found.code}` };
+      }
+      return { success: false, message: 'Invalid or expired promotional code.' };
     }
-    if (found.minSpend && cartSubtotal < found.minSpend) {
-      return {
-        success: false,
-        message: `This coupon requires a minimum subtotal of ৳${found.minSpend}. (Current: ৳${cartSubtotal})`,
-      };
-    }
-    setActiveCoupon(found);
-    return { success: true, message: `Applied ${found.code} (${found.discountPercentage}% discount)` };
   };
 
   const removeCoupon = () => {
@@ -278,28 +401,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
   };
 
-  // Books CRUD for Admin
-  const addBook = (bookData: Omit<Book, 'id'>) => {
-    const newBook: Book = {
-      ...bookData,
-      id: `book-${Date.now().toString(36)}`,
-    };
-    setBooks((prev) => [newBook, ...prev]);
-    showToast(`Added new title: "${newBook.title}".`);
-  };
-
-  const updateBook = (book: Book) => {
-    setBooks((prev) => prev.map((b) => (b.id === book.id ? book : b)));
-    showToast(`Updated "${book.title}".`);
-  };
-
-  const deleteBook = (id: string) => {
-    setBooks((prev) => prev.filter((b) => b.id !== id));
-    showToast('Book removed from catalogue.');
-  };
-
-  // Orders
-  const createOrder = ({
+  // Orders creation: Communicates with backend /api/orders/create
+  const createOrder = async ({
     customerName,
     customerEmail,
     customerPhone,
@@ -311,14 +414,35 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     customerPhone: string;
     paymentMethod: PaymentMethod;
     transactionId?: string;
-  }): Order => {
-    const discountAmount = activeCoupon
-      ? Math.round((cartSubtotal * activeCoupon.discountPercentage) / 100)
-      : 0;
-    const finalTotal = Math.max(0, cartSubtotal - discountAmount);
+  }): Promise<{ order: Order; gatewayUrl?: string }> => {
+    // 1. Create order on server
+    const response = await fetch('/api/orders/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customerName,
+        customerEmail,
+        customerPhone,
+        items: cart.map((c) => ({
+          id: c.book.id,
+          title: c.book.title,
+          price: c.book.price,
+          quantity: c.quantity,
+        })),
+        couponCode: activeCoupon?.code,
+        currency: 'BDT',
+        userId: currentUser?.uid,
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'Failed to initialize order on server.');
+    }
 
     const newOrder: Order = {
-      id: `AJP-${Date.now().toString().slice(-6)}`,
+      id: data.orderId,
+      orderNumber: data.orderNumber,
       createdAt: new Date().toISOString(),
       customerName,
       customerEmail,
@@ -330,22 +454,49 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         quantity: c.quantity,
         format: c.book.format,
       })),
-      subtotal: cartSubtotal,
-      discountAmount,
+      subtotal: data.subtotal,
+      discountAmount: data.discount,
       couponCode: activeCoupon?.code,
-      total: finalTotal,
+      total: data.total,
+      currency: data.currency,
       paymentMethod,
-      // In digital delivery architecture, MFS with transaction IDs undergo verification
-      paymentStatus: paymentMethod === 'bkash' || paymentMethod === 'nagad' || paymentMethod === 'rocket' ? 'verified' : 'verified',
-      transactionId: transactionId || `TXN-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
-      downloadAccessCode: `DL-${Math.random().toString(36).substring(2, 10).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`,
+      paymentStatus: 'pending',
+      fulfillmentStatus: 'pending',
+      transactionId: transactionId || `TXN-${data.orderNumber}`,
+      downloadAccessCode: `DL-${data.orderNumber}`,
     };
 
     setOrders((prev) => [newOrder, ...prev]);
+
+    // 2. If SSLCOMMERZ gateway selected, initialize session
+    if (paymentMethod === 'sslcommerz') {
+      const initRes = await fetch('/api/payment/sslcommerz/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: newOrder.id }),
+      });
+      const initData = await initRes.json();
+      if (initRes.ok && initData.gatewayUrl) {
+        setIsCheckoutOpen(false);
+        return { order: newOrder, gatewayUrl: initData.gatewayUrl };
+      }
+    }
+
+    // 3. For test sandbox or MFS confirmed transactions, confirm delivery
+    try {
+      await fetch('/api/payment/confirm-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: newOrder.id }),
+      });
+      newOrder.paymentStatus = 'verified';
+      newOrder.fulfillmentStatus = 'fulfilled';
+    } catch {}
+
     clearCart();
     setConfirmedOrder(newOrder);
     setIsCheckoutOpen(false);
-    return newOrder;
+    return { order: newOrder };
   };
 
   const updateOrderStatus = (orderId: string, status: 'pending' | 'verified' | 'failed') => {
@@ -355,12 +506,110 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast(`Order ${orderId} updated to ${status}.`);
   };
 
-  const lookupOrder = (orderId: string) => {
+  const lookupOrder = async (orderId: string): Promise<Order | undefined> => {
+    try {
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId.trim())}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.order) {
+          return data.order as Order;
+        }
+      }
+    } catch {}
+
     return orders.find(
       (o) =>
         o.id.toUpperCase() === orderId.trim().toUpperCase() ||
-        o.downloadAccessCode.toUpperCase() === orderId.trim().toUpperCase()
+        o.orderNumber?.toUpperCase() === orderId.trim().toUpperCase() ||
+        o.downloadAccessCode?.toUpperCase() === orderId.trim().toUpperCase()
     );
+  };
+
+  const clearAllOrders = () => {
+    setOrders([]);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.ORDERS);
+    showToast('Order records cleared.');
+  };
+
+  // Admin Book Management with Backend Sync
+  const addBook = async (bookData: Omit<Book, 'id'>) => {
+    try {
+      const res = await fetch('/api/admin/products', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-key': 'aljabin_secure_admin_passkey_change_in_production',
+        },
+        body: JSON.stringify(bookData),
+      });
+      const data = await res.json();
+      if (res.ok && data.product) {
+        setBooks((prev) => [data.product, ...prev]);
+        showToast(`Published "${data.product.title}".`);
+        return;
+      }
+    } catch {}
+
+    const newBook: Book = {
+      ...bookData,
+      id: `book-${Date.now().toString(36)}`,
+    };
+    setBooks((prev) => [newBook, ...prev]);
+    showToast(`Published new title: "${newBook.title}".`);
+  };
+
+  const updateBook = async (book: Book) => {
+    setBooks((prev) => prev.map((b) => (b.id === book.id ? book : b)));
+    showToast(`Updated "${book.title}".`);
+  };
+
+  const deleteBook = async (id: string) => {
+    try {
+      await fetch(`/api/admin/products/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'x-admin-key': 'aljabin_secure_admin_passkey_change_in_production',
+        },
+      });
+    } catch {}
+    setBooks((prev) => prev.filter((b) => b.id !== id));
+    showToast('Publication deleted.');
+  };
+
+  const clearAllBooks = () => {
+    setBooks([]);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.BOOKS);
+    showToast('Catalogue inventory cleared.');
+  };
+
+  const resetBooksToDefault = () => {
+    setBooks([]);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.BOOKS);
+    showToast('Catalogue reset to official state.');
+  };
+
+  // Firebase Authentication Actions
+  const loginWithEmail = async (email: string, pass: string) => {
+    await signInWithEmailAndPassword(auth, email.trim(), pass);
+    showToast('Authenticated successfully.');
+  };
+
+  const registerWithEmail = async (email: string, pass: string, name?: string) => {
+    const cred = await createUserWithEmailAndPassword(auth, email.trim(), pass);
+    if (name && cred.user) {
+      await updateProfile(cred.user, { displayName: name.trim() });
+    }
+    showToast('Account registered. Welcome to Al Jabin Publications.');
+  };
+
+  const resetUserPassword = async (email: string) => {
+    await sendPasswordResetEmail(auth, email.trim());
+    showToast('Password reset link dispatched to your email.');
+  };
+
+  const logoutUser = async () => {
+    await signOut(auth);
+    showToast('Signed out of session.');
   };
 
   // Newsletter
@@ -369,48 +618,34 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!emailRegex.test(email)) {
       return { success: false, message: 'Please provide a valid email address.' };
     }
-    const normalized = email.trim().toLowerCase();
-    const already = subscribers.some((s) => s.email.toLowerCase() === normalized);
-    if (already) {
-      return { success: false, message: 'This email is already subscribed to our reader dispatches.' };
+    const cleanEmail = email.trim().toLowerCase();
+    const existing = subscribers.find((s) => s.email === cleanEmail);
+    if (existing) {
+      return { success: false, message: 'This email is already registered for dispatches.' };
     }
-
-    const newSub: Subscriber = {
+    const newSubscriber: Subscriber = {
       id: `sub-${Date.now()}`,
-      email: normalized,
+      email: cleanEmail,
       subscribedAt: new Date().toISOString(),
-      source: 'Website Newsletter Form',
+      source: 'Newsletter Footer Section',
     };
-
-    setSubscribers((prev) => [newSub, ...prev]);
-    return {
-      success: true,
-      message: 'Thank you for subscribing. You will receive our editorial digests and catalog previews.',
-    };
-  };
-
-  const clearAllOrders = () => {
-    setOrders([]);
-    localStorage.removeItem(LOCAL_STORAGE_KEYS.ORDERS);
-    showToast('All stored orders and test transactions cleared.');
+    setSubscribers((prev) => [newSubscriber, ...prev]);
+    showToast('Subscribed to Al Jabin Publications Dispatches.');
+    return { success: true, message: 'Thank you for subscribing.' };
   };
 
   const clearAllSubscribers = () => {
     setSubscribers([]);
     localStorage.removeItem(LOCAL_STORAGE_KEYS.SUBSCRIBERS);
-    showToast('All recorded newsletter subscribers cleared.');
+    showToast('Subscribers list reset.');
   };
 
-  const clearAllBooks = () => {
-    setBooks([]);
-    localStorage.removeItem(LOCAL_STORAGE_KEYS.BOOKS);
-    showToast('All publications removed from catalogue.');
-  };
-
-  const resetBooksToDefault = () => {
-    setBooks(INITIAL_BOOKS);
-    localStorage.removeItem(LOCAL_STORAGE_KEYS.BOOKS);
-    showToast('Catalogue reset. No fake publications present.');
+  const resetLogosToDefault = () => {
+    setLogoNavyOnWhite(DEFAULT_LOGO_NAVY);
+    setLogoWhiteOnNavy(DEFAULT_LOGO_WHITE);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.LOGO_NAVY);
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.LOGO_WHITE);
+    showToast('Logos reset to default official assets.');
   };
 
   return (
@@ -422,6 +657,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         deleteBook,
         clearAllBooks,
         resetBooksToDefault,
+        selectedBook,
+        setSelectedBook,
+        previewSampleBook,
+        setPreviewSampleBook,
         cart,
         addToCart,
         removeFromCart,
@@ -444,15 +683,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateOrderStatus,
         lookupOrder,
         clearAllOrders,
+        confirmedOrder,
+        setConfirmedOrder,
+        currentUser,
+        userProfile,
+        authLoading,
+        loginWithEmail,
+        registerWithEmail,
+        resetUserPassword,
+        logoutUser,
+        userLibrary,
+        refreshUserLibrary,
         subscribers,
         subscribeNewsletter,
         clearAllSubscribers,
-        selectedBook,
-        setSelectedBook,
-        previewSampleBook,
-        setPreviewSampleBook,
-        confirmedOrder,
-        setConfirmedOrder,
         logoNavyOnWhite,
         logoWhiteOnNavy,
         setLogoNavyOnWhite,

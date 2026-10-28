@@ -18,6 +18,7 @@ export interface Book {
   author: string;
   category: 'Personal Growth' | 'Mindset' | 'Productivity' | 'Fiction';
   price: number; // in BDT
+  priceUSD?: number;
   originalPrice?: number;
   discountPercentage?: number;
   isFeatured?: boolean;
@@ -41,7 +42,7 @@ export interface CartItem {
   quantity: number;
 }
 
-export type PaymentMethod = 'bkash' | 'nagad' | 'rocket' | 'card' | 'international';
+export type PaymentMethod = 'sslcommerz' | 'bkash' | 'nagad' | 'rocket' | 'card' | 'international';
 
 export interface OrderItem {
   bookId: string;
@@ -51,8 +52,21 @@ export interface OrderItem {
   format: string;
 }
 
+export interface EntitledDownload {
+  downloadId: string;
+  productId: string;
+  productTitle: string;
+  orderNumber: string;
+  downloadUrl: string;
+  expiresAt: string;
+  downloadCount: number;
+  maxDownloads: number;
+  isExpired: boolean;
+}
+
 export interface Order {
   id: string;
+  orderNumber?: string;
   createdAt: string;
   customerName: string;
   customerEmail: string;
@@ -62,10 +76,13 @@ export interface Order {
   discountAmount: number;
   couponCode?: string;
   total: number;
+  currency?: 'BDT' | 'USD';
   paymentMethod: PaymentMethod;
-  paymentStatus: 'pending' | 'verified' | 'failed';
+  paymentStatus: 'pending' | 'verified' | 'failed' | 'cancelled';
+  fulfillmentStatus?: 'pending' | 'fulfilled' | 'failed';
   transactionId?: string;
   downloadAccessCode: string;
+  downloads?: EntitledDownload[];
 }
 
 export interface Coupon {
@@ -81,4 +98,12 @@ export interface Subscriber {
   email: string;
   subscribedAt: string;
   source: string;
+}
+
+export interface CustomerProfile {
+  uid: string;
+  email: string;
+  displayName?: string;
+  role: 'customer' | 'admin';
+  createdAt: string;
 }

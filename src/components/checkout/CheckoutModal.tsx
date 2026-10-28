@@ -1,7 +1,18 @@
 import React, { useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { PaymentMethod } from '../../types';
-import { X, ShieldCheck, Lock, CreditCard, Smartphone, CheckCircle2, AlertCircle, ArrowRight, HelpCircle } from 'lucide-react';
+import {
+  X,
+  ShieldCheck,
+  Lock,
+  CreditCard,
+  Smartphone,
+  CheckCircle2,
+  AlertCircle,
+  ArrowRight,
+  ExternalLink,
+  Globe,
+} from 'lucide-react';
 
 export const CheckoutModal: React.FC = () => {
   const {
@@ -11,13 +22,13 @@ export const CheckoutModal: React.FC = () => {
     cartSubtotal,
     activeCoupon,
     createOrder,
-    setIsCartOpen,
+    currentUser,
   } = useStore();
 
-  const [customerName, setCustomerName] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerName, setCustomerName] = useState(currentUser?.displayName || '');
+  const [customerEmail, setCustomerEmail] = useState(currentUser?.email || '');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bkash');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('sslcommerz');
   const [transactionId, setTransactionId] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -29,9 +40,8 @@ export const CheckoutModal: React.FC = () => {
     ? Math.round((cartSubtotal * activeCoupon.discountPercentage) / 100)
     : 0;
   const finalTotal = Math.max(0, cartSubtotal - discountAmount);
-  const usdEstimate = (finalTotal / 120).toFixed(2);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
@@ -47,11 +57,10 @@ export const CheckoutModal: React.FC = () => {
     }
 
     if (!customerPhone.trim()) {
-      setErrorMsg('Please enter your mobile phone number for verification.');
+      setErrorMsg('Please enter your contact phone number.');
       return;
     }
 
-    // If MFS method is chosen in Bangladesh, ask for transaction reference
     if (['bkash', 'nagad', 'rocket'].includes(paymentMethod) && !transactionId.trim()) {
       setErrorMsg(`Please enter the ${paymentMethod.toUpperCase()} transaction ID (TrxID) from your payment receipt.`);
       return;
@@ -64,25 +73,27 @@ export const CheckoutModal: React.FC = () => {
 
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      try {
-        createOrder({
-          customerName: customerName.trim(),
-          customerEmail: customerEmail.trim(),
-          customerPhone: customerPhone.trim(),
-          paymentMethod,
-          transactionId: transactionId.trim() || undefined,
-        });
-        setIsSubmitting(false);
-      } catch (err) {
-        setErrorMsg('An error occurred during order processing. Please retry.');
-        setIsSubmitting(false);
+    try {
+      const result = await createOrder({
+        customerName: customerName.trim(),
+        customerEmail: customerEmail.trim(),
+        customerPhone: customerPhone.trim(),
+        paymentMethod,
+        transactionId: transactionId.trim() || undefined,
+      });
+
+      if (result.gatewayUrl) {
+        // Redirect to SSLCOMMERZ Gateway
+        window.location.href = result.gatewayUrl;
       }
-    }, 600);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'An error occurred during order initialization. Please retry.');
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-fade-in">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-fade-in">
       <div className="relative bg-white w-full max-w-3xl shadow-2xl border border-[#E8E9F0] rounded-3xl overflow-hidden my-auto max-h-[92vh] flex flex-col">
         
         {/* Header */}
@@ -95,16 +106,30 @@ export const CheckoutModal: React.FC = () => {
           </div>
           <button
             onClick={() => setIsCheckoutOpen(false)}
-            className="p-1.5 text-[#686B78] hover:text-[#171923] hover:bg-gray-100 rounded-full transition-colors"
+            className="p-1.5 text-[#686B78] hover:text-[#171923] hover:bg-gray-100 rounded-full transition-colors cursor-pointer"
             aria-label="Close checkout"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Checkout Form */}
-        <form onSubmit={handleSubmit} className="overflow-y-auto p-6 sm:p-8 flex-1 space-y-6">
+        {/* Content Body */}
+        <div className="p-6 sm:p-8 overflow-y-auto space-y-6 flex-1">
           
+          {/* Order Summary Strip */}
+          <div className="p-4 bg-[#FAF7F0] border border-[#EBE6DF] rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div>
+              <span className="text-[#686B78]">Items in Order: </span>
+              <span className="font-semibold text-[#171923]">
+                {cart.map((c) => `${c.book.title} (x${c.quantity})`).join(', ')}
+              </span>
+            </div>
+            <div className="text-right shrink-0">
+              <span className="text-[#686B78]">Server-Calculated Total: </span>
+              <span className="font-semibold text-base text-[#171D50] ml-1">৳{finalTotal}</span>
+            </div>
+          </div>
+
           {errorMsg && (
             <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-2xl flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -112,256 +137,174 @@ export const CheckoutModal: React.FC = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-            
-            {/* Left Column: Customer & Payment Details */}
-            <div className="md:col-span-7 space-y-6">
-              
-              {/* Reader Info */}
-              <div className="space-y-3">
-                <h4 className="text-xs uppercase tracking-wider font-semibold text-[#171923] flex items-center gap-1.5">
-                  <span>1. Reader Details & Digital Delivery</span>
-                </h4>
-                
+          <form onSubmit={handleSubmit} className="space-y-6 text-left">
+            {/* Customer Details */}
+            <div className="space-y-4">
+              <h4 className="text-xs uppercase tracking-wider text-[#686B78] font-semibold">
+                1. Delivery & Buyer Details
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-medium text-[#171923] mb-1">
+                  <label className="block text-xs font-medium text-[#171923] mb-1">
                     Full Name *
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Asif Ahmed"
+                    placeholder="e.g. Farhan Mahmud"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none rounded-xl"
+                    className="w-full px-4 py-2.5 text-xs border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none rounded-xl bg-white"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-[11px] font-medium text-[#171923] mb-1">
-                    Email Address * (Ebook download link sent here)
+                  <label className="block text-xs font-medium text-[#171923] mb-1">
+                    Email for Digital Download Delivery *
                   </label>
                   <input
                     type="email"
                     required
-                    placeholder="name@domain.com"
+                    placeholder="name@example.com"
                     value={customerEmail}
                     onChange={(e) => setCustomerEmail(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none rounded-xl"
+                    className="w-full px-4 py-2.5 text-xs border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none rounded-xl bg-white"
                   />
                 </div>
-
-                <div>
-                  <label className="block text-[11px] font-medium text-[#171923] mb-1">
-                    Phone Number * (Required for MFS verification)
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-[#171923] mb-1">
+                    Contact Phone Number *
                   </label>
                   <input
                     type="tel"
                     required
-                    placeholder="+880 1712-XXXXXX"
+                    placeholder="017XXXXXXXX"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="w-full px-3.5 py-2 text-xs border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none rounded-xl"
+                    className="w-full px-4 py-2.5 text-xs border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none rounded-xl bg-white"
                   />
+                  <p className="text-[11px] text-[#686B78] mt-1 font-light">
+                    Required for payment gateway verification and transactional receipts.
+                  </p>
                 </div>
               </div>
-
-              {/* Payment Method Selector */}
-              <div className="space-y-3 pt-2">
-                <h4 className="text-xs uppercase tracking-wider font-semibold text-[#171923]">
-                  2. Payment Method
-                </h4>
-
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('bkash')}
-                    className={`p-3.5 border text-left transition-all rounded-2xl ${
-                      paymentMethod === 'bkash'
-                        ? 'border-[#171D50] bg-[#171D50]/5 font-semibold text-[#171D50] shadow-xs'
-                        : 'border-[#E8E9F0] bg-white text-[#686B78] hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="font-medium text-pink-700">bKash (MFS)</div>
-                    <div className="text-[10px] text-[#686B78] mt-0.5">Instant Bangladesh App</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('nagad')}
-                    className={`p-3.5 border text-left transition-all rounded-2xl ${
-                      paymentMethod === 'nagad'
-                        ? 'border-[#171D50] bg-[#171D50]/5 font-semibold text-[#171D50] shadow-xs'
-                        : 'border-[#E8E9F0] bg-white text-[#686B78] hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="font-medium text-orange-600">Nagad</div>
-                    <div className="text-[10px] text-[#686B78] mt-0.5">Post Office Digital</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('card')}
-                    className={`p-3.5 border text-left transition-all rounded-2xl ${
-                      paymentMethod === 'card'
-                        ? 'border-[#171D50] bg-[#171D50]/5 font-semibold text-[#171D50] shadow-xs'
-                        : 'border-[#E8E9F0] bg-white text-[#686B78] hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="font-medium text-[#171923]">Visa / Mastercard</div>
-                    <div className="text-[10px] text-[#686B78] mt-0.5">SSLCommerz / Local Gateway</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('international')}
-                    className={`p-3.5 border text-left transition-all rounded-2xl ${
-                      paymentMethod === 'international'
-                        ? 'border-[#171D50] bg-[#171D50]/5 font-semibold text-[#171D50] shadow-xs'
-                        : 'border-[#E8E9F0] bg-white text-[#686B78] hover:border-gray-300'
-                    }`}
-                  >
-                    <div className="font-medium text-[#171923]">International Card</div>
-                    <div className="text-[10px] text-[#686B78] mt-0.5">Stripe (~${usdEstimate} USD)</div>
-                  </button>
-                </div>
-
-                {/* MFS instructions */}
-                {['bkash', 'nagad', 'rocket'].includes(paymentMethod) && (
-                  <div className="p-4 bg-gray-50 border border-[#E8E9F0] rounded-2xl space-y-2 text-xs">
-                    <div className="text-[11px] text-[#171923] font-medium">
-                      Payment Instructions for {paymentMethod.toUpperCase()}:
-                    </div>
-                    <ol className="list-decimal list-inside text-[11px] text-[#686B78] space-y-1">
-                      <li>Send money / Make Payment to Merchant Account: <span className="font-mono font-bold text-[#171D50]">01700-112233</span></li>
-                      <li>Amount: <span className="font-bold text-[#171D50]">৳{finalTotal} BDT</span></li>
-                      <li>Enter reference: <span className="font-mono">ALJABIN</span></li>
-                    </ol>
-                    <div className="pt-2">
-                      <label className="block text-[10px] uppercase tracking-wider font-semibold text-[#171923] mb-1">
-                        Enter Transaction ID (TrxID) *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. 9B7X289LA"
-                        value={transactionId}
-                        onChange={(e) => setTransactionId(e.target.value.toUpperCase())}
-                        className="w-full px-4 py-2 text-xs font-mono uppercase bg-white border border-[#E8E9F0] focus:outline-none focus:border-[#171D50] rounded-xl"
-                      />
-                      <p className="text-[10px] text-[#686B78] mt-1">
-                        Enter the 8-10 digit Transaction ID received via SMS after sending payment.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Card instructions */}
-                {paymentMethod === 'card' && (
-                  <div className="p-4 bg-gray-50 border border-[#E8E9F0] rounded-2xl text-xs space-y-1.5 text-[#686B78]">
-                    <div className="font-semibold text-[#171923] flex items-center gap-1.5">
-                      <CreditCard className="w-4 h-4 text-[#171D50]" />
-                      <span>Local Debit / Credit Cards</span>
-                    </div>
-                    <p className="text-[11px] leading-relaxed">
-                      Secured by SSLCommerz and Bangladesh Bank 2FA protocols. Supports Visa, Mastercard, DBBL Nexus, and UnionPay with zero processing fees.
-                    </p>
-                  </div>
-                )}
-
-                {paymentMethod === 'international' && (
-                  <div className="p-4 bg-gray-50 border border-[#E8E9F0] rounded-2xl text-xs space-y-1.5 text-[#686B78]">
-                    <div className="font-semibold text-[#171923] flex items-center gap-1.5">
-                      <CreditCard className="w-4 h-4 text-[#171D50]" />
-                      <span>International Credit Cards (USD)</span>
-                    </div>
-                    <p className="text-[11px] leading-relaxed">
-                      Accepts Visa, Mastercard, and American Express worldwide (~${usdEstimate} USD) with instant digital delivery upon confirmation.
-                    </p>
-                  </div>
-                )}
-              </div>
-
             </div>
 
-            {/* Right Column: Order Summary */}
-            <div className="md:col-span-5 bg-[#FAFAFC] p-6 border border-[#E8E9F0] rounded-3xl flex flex-col justify-between space-y-4 shadow-2xs">
-              <div>
-                <h4 className="text-xs uppercase tracking-wider font-semibold text-[#171923] mb-3">
-                  Order Summary ({cart.length} {cart.length === 1 ? 'item' : 'items'})
-                </h4>
-
-                <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
-                  {cart.map((item) => (
-                    <div key={item.book.id} className="flex justify-between text-xs py-1.5 border-b border-[#F0F1F5]">
-                      <div className="min-w-0 pr-2">
-                        <div className="font-medium text-[#171923] truncate">{item.book.title}</div>
-                        <div className="text-[10px] text-[#686B78]">Qty: {item.quantity} · {item.book.format.split(' ')[0]}</div>
-                      </div>
-                      <div className="font-semibold text-[#171D50] shrink-0">
-                        ৳{item.book.price * item.quantity}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Total breakdown */}
-                <div className="pt-4 space-y-2 text-xs text-[#686B78] border-t border-[#E8E9F0] mt-3">
-                  <div className="flex justify-between">
-                    <span>Subtotal</span>
-                    <span className="text-[#171923]">৳{cartSubtotal} BDT</span>
-                  </div>
-                  {activeCoupon && (
-                    <div className="flex justify-between text-emerald-700">
-                      <span>Coupon ({activeCoupon.code})</span>
-                      <span>-৳{discountAmount} BDT</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-sm font-bold text-[#171D50] pt-2 border-t border-[#E8E9F0]">
-                    <span>Total Amount</span>
-                    <span>৳{finalTotal} BDT</span>
-                  </div>
-                  <div className="text-[10px] text-right text-[#686B78]">
-                    Approx. ${usdEstimate} USD
-                  </div>
-                </div>
-              </div>
-
-              {/* Terms Checkbox */}
-              <div className="space-y-3 pt-2 border-t border-[#E8E9F0]">
-                <label className="flex items-start gap-2 text-[11px] text-[#686B78] cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={agreedToTerms}
-                    onChange={(e) => setAgreedToTerms(e.target.checked)}
-                    className="mt-0.5 accent-[#171D50] rounded-sm"
-                  />
-                  <span>
-                    I agree to the Digital Ebook License (personal use, DRM-free) and accept instant delivery to my email address.
-                  </span>
-                </label>
-
+            {/* Payment Method Selection */}
+            <div className="space-y-4 pt-4 border-t border-[#E8E9F0]">
+              <h4 className="text-xs uppercase tracking-wider text-[#686B78] font-semibold">
+                2. Select Payment Method
+              </h4>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* SSLCOMMERZ Official Gateway */}
                 <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-3.5 bg-[#171D50] text-white text-xs font-semibold tracking-widest uppercase hover:bg-[#0f1338] transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm rounded-full disabled:opacity-50"
+                  type="button"
+                  onClick={() => setPaymentMethod('sslcommerz')}
+                  className={`p-4 border text-left rounded-2xl transition-all cursor-pointer flex flex-col justify-between ${
+                    paymentMethod === 'sslcommerz'
+                      ? 'border-[#171D50] bg-[#171D50]/5 shadow-xs'
+                      : 'border-[#E8E9F0] hover:border-gray-300 bg-white'
+                  }`}
                 >
-                  {isSubmitting ? (
-                    <span>Verifying & Generating Ebooks...</span>
-                  ) : (
-                    <>
-                      <span>Complete Order & Get Downloads</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-[#171D50]" />
+                      <span className="font-semibold text-xs text-[#171923]">SSLCOMMERZ Gateway</span>
+                    </div>
+                    {paymentMethod === 'sslcommerz' && <CheckCircle2 className="w-4 h-4 text-[#171D50]" />}
+                  </div>
+                  <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
+                    Visa, Mastercard, Amex, bKash, Nagad, Rocket, Upay & Bangladesh NetBanking.
+                  </p>
+                  <div className="mt-2 text-[10px] text-emerald-700 font-medium">
+                    ✓ Instant Automated Verification
+                  </div>
+                </button>
+
+                {/* Direct bKash MFS */}
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('bkash')}
+                  className={`p-4 border text-left rounded-2xl transition-all cursor-pointer flex flex-col justify-between ${
+                    paymentMethod === 'bkash'
+                      ? 'border-[#171D50] bg-[#171D50]/5 shadow-xs'
+                      : 'border-[#E8E9F0] hover:border-gray-300 bg-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Smartphone className="w-4 h-4 text-[#E2136E]" />
+                      <span className="font-semibold text-xs text-[#171923]">Direct bKash Transfer</span>
+                    </div>
+                    {paymentMethod === 'bkash' && <CheckCircle2 className="w-4 h-4 text-[#171D50]" />}
+                  </div>
+                  <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
+                    Merchant Send Money / Counter Payment with Transaction ID (TrxID).
+                  </p>
+                  <div className="mt-2 text-[10px] text-[#686B78]">
+                    Number: 01700-000000
+                  </div>
                 </button>
               </div>
 
+              {/* Direct MFS Transaction ID Input */}
+              {['bkash', 'nagad', 'rocket'].includes(paymentMethod) && (
+                <div className="p-4 bg-gray-50 border border-[#E8E9F0] rounded-2xl space-y-2 mt-3 animate-fade-in">
+                  <label className="block text-xs font-medium text-[#171923]">
+                    Enter {paymentMethod.toUpperCase()} Transaction ID (TrxID) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 9K72B8XQ"
+                    value={transactionId}
+                    onChange={(e) => setTransactionId(e.target.value)}
+                    className="w-full px-4 py-2 text-xs font-mono uppercase bg-white border border-[#E8E9F0] rounded-xl focus:border-[#171D50] focus:outline-none"
+                  />
+                  <p className="text-[11px] text-[#686B78]">
+                    Send ৳{finalTotal} to our official merchant account (01700-000000) and paste the confirmation TrxID.
+                  </p>
+                </div>
+              )}
             </div>
 
-          </div>
+            {/* Terms Agreement */}
+            <div className="pt-4 border-t border-[#E8E9F0] space-y-3">
+              <label className="flex items-start gap-2.5 cursor-pointer text-xs text-[#686B78]">
+                <input
+                  type="checkbox"
+                  checked={agreedToTerms}
+                  onChange={(e) => setAgreedToTerms(e.target.checked)}
+                  className="mt-0.5 rounded text-[#171D50] focus:ring-[#171D50]"
+                />
+                <span>
+                  I understand that this purchase is for personal, DRM-free digital editions (PDF & EPUB). Downloads are instant upon payment verification.
+                </span>
+              </label>
+            </div>
 
-        </form>
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className={`w-full py-3.5 bg-[#171D50] text-white text-xs font-semibold tracking-wider uppercase rounded-full hover:bg-[#0f1338] transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer ${
+                isSubmitting ? 'opacity-70 cursor-wait' : ''
+              }`}
+            >
+              {isSubmitting ? (
+                <span>Initializing Secure Session...</span>
+              ) : (
+                <>
+                  <span>
+                    {paymentMethod === 'sslcommerz' ? `Pay ৳${finalTotal} via SSLCOMMERZ` : `Confirm Order (৳${finalTotal})`}
+                  </span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
+
+        </div>
 
       </div>
     </div>
