@@ -25,7 +25,7 @@ AL JABIN PUBLICATIONS — OFFICIAL DIGITAL EDITION
 Title:       ${title}
 ${bookMeta?.subtitle ? `Subtitle:    ${bookMeta.subtitle}\n` : ''}Author:      ${bookMeta?.author || 'Al Jabin Publications'}
 Category:    ${bookMeta?.category || 'General'}
-ISBN:        ${bookMeta?.isbn || '978-984-09-8421-2'}
+ISBN:        ${bookMeta?.isbn || 'Digital Edition'}
 Language:    ${bookMeta?.language || 'English'}
 Format:      Universal ${format} (DRM-Free Personal Edition)
 Order ID:    ${confirmedOrder.id}

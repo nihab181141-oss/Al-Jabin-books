@@ -1,10 +1,5 @@
 import React from 'react';
 import { CheckCircle2, ArrowUpRight } from 'lucide-react';
-import {
-  WritingDeskSanctuary,
-  BookbindingCraftVignette,
-  OpenCodexSpecimen,
-} from '../ui/BookcraftIllustrations';
 
 export const AboutSection: React.FC = () => {
   return (
@@ -71,26 +66,35 @@ export const AboutSection: React.FC = () => {
               </div>
             </div>
 
-            {/* Stat Card 2: Soft Butter Pastel Surface */}
-            <div className="bg-[#FFF2C6] rounded-[28px] p-7 flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#784A00]">Payment & Currency</span>
-                <ArrowUpRight className="w-4 h-4 text-[#784A00]" />
-              </div>
-              <div className="my-3">
-                <div className="text-2xl sm:text-3xl font-bold tracking-[-0.03em] text-[#171923]">
-                  Bangladesh & Global
+            {/* Stat Card 2: Soft Lavender/Butter Global Distribution Bento Card with Online_world SVG */}
+            <div className="bg-[#EAE6FF] rounded-[28px] p-7 flex items-center justify-between gap-4">
+              <div className="flex-1 flex flex-col justify-between min-w-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-[#171D50]">Global Distribution</span>
+                  <ArrowUpRight className="w-4 h-4 text-[#171D50]" />
                 </div>
-                <p className="text-xs text-[#6B5428] mt-1 leading-relaxed">
-                  Instant checkout in BDT via bKash, Nagad, Rocket & local bank cards, plus international Visa/Mastercard.
-                </p>
+                <div className="my-3">
+                  <div className="text-xl sm:text-2xl font-bold tracking-[-0.03em] text-[#171923]">
+                    Bangladesh & Worldwide
+                  </div>
+                  <p className="text-xs text-[#4B4E6D] mt-1 leading-relaxed">
+                    Instant checkout in BDT via bKash, Nagad & Rocket, plus international cards.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-[#171D50]">
+                  <span>৳ BDT</span>
+                  <span aria-hidden="true">·</span>
+                  <span>Direct MFS & Cards</span>
+                  <span aria-hidden="true">·</span>
+                  <span>Instant Token</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-[11px] font-semibold text-[#784A00]">
-                <span>৳ BDT</span>
-                <span aria-hidden="true">·</span>
-                <span>Direct MFS & Cards</span>
-                <span aria-hidden="true">·</span>
-                <span>Instant Token</span>
+              <div className="w-28 h-28 sm:w-32 sm:h-32 shrink-0 bg-white/85 rounded-2xl p-2 flex items-center justify-center shadow-2xs">
+                <img
+                  src="/assets/aistudio/Online_world-amico_9426eeb6.svg"
+                  alt="Connected digital readers across Bangladesh and worldwide"
+                  className="w-full h-full object-contain"
+                />
               </div>
             </div>
 
@@ -100,11 +104,15 @@ export const AboutSection: React.FC = () => {
         {/* Bottom 3 Tactile Craft Pillars with Pastel Illustration Plates */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           
-          {/* Pillar 1 */}
+          {/* Pillar 1: Bookmarks-pana (Terracotta & Navy) */}
           <div className="bg-white rounded-[28px] p-7 flex flex-col justify-between shadow-2xs group hover:-translate-y-0.5 transition-all duration-300">
             <div>
-              <div className="w-full h-36 bg-[#EAE6FF]/60 rounded-2xl p-4 flex items-center justify-center mb-6">
-                <WritingDeskSanctuary className="w-full h-full" strokeColor="#171D50" />
+              <div className="w-full h-48 bg-[#FFE2DB]/65 rounded-2xl p-3 flex items-center justify-center mb-6 overflow-hidden">
+                <img
+                  src="/assets/aistudio/Bookmarks-pana_fc1b81f4.svg"
+                  alt="Editorial bookmarks and reading workflow illustration"
+                  className="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-300"
+                />
               </div>
               <div className="text-[11px] font-semibold text-[#686B78] tabular-nums mb-1">
                 01 · Editorial Rigor
@@ -118,29 +126,37 @@ export const AboutSection: React.FC = () => {
             </div>
           </div>
 
-          {/* Pillar 2 */}
+          {/* Pillar 2: Bookshop-bro (Editorial Sage & Navy) */}
           <div className="bg-white rounded-[28px] p-7 flex flex-col justify-between shadow-2xs group hover:-translate-y-0.5 transition-all duration-300">
             <div>
-              <div className="w-full h-36 bg-[#FFE2DB]/65 rounded-2xl p-4 flex items-center justify-center mb-6">
-                <BookbindingCraftVignette className="w-full h-full" strokeColor="#171D50" />
+              <div className="w-full h-48 bg-[#E9F3F0] rounded-2xl p-3 flex items-center justify-center mb-6 overflow-hidden">
+                <img
+                  src="/assets/aistudio/Bookshop-bro_04087275.svg"
+                  alt="Curated bookstore selection and fulfillment illustration"
+                  className="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-300"
+                />
               </div>
               <div className="text-[11px] font-semibold text-[#686B78] tabular-nums mb-1">
                 02 · Tactile Craft
               </div>
               <h3 className="text-xl font-bold tracking-[-0.02em] text-[#171923]">
-                Archival Typography
+                Curated Bookshop Experience
               </h3>
               <p className="text-xs sm:text-sm text-[#575A66] leading-relaxed mt-2">
-                Balanced reading measures, classical proportions, and effortless readability on every screen size.
+                Balanced reading measures, classical proportions, and seamless acquisition across every screen size.
               </p>
             </div>
           </div>
 
-          {/* Pillar 3 */}
+          {/* Pillar 3: Hotel_Booking-cuate (Sky Blue & Royal Indigo mobile access) */}
           <div className="bg-white rounded-[28px] p-7 flex flex-col justify-between shadow-2xs group hover:-translate-y-0.5 transition-all duration-300">
             <div>
-              <div className="w-full h-36 bg-[#E1EEFF]/75 rounded-2xl p-4 flex items-center justify-center mb-6">
-                <OpenCodexSpecimen className="w-full h-full" strokeColor="#171D50" />
+              <div className="w-full h-48 bg-[#E1EEFF]/80 rounded-2xl p-3 flex items-center justify-center mb-6 overflow-hidden">
+                <img
+                  src="/assets/aistudio/Hotel_Booking-cuate_3b3357b3.svg"
+                  alt="Mobile order confirmation and instant digital library access illustration"
+                  className="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-300"
+                />
               </div>
               <div className="text-[11px] font-semibold text-[#686B78] tabular-nums mb-1">
                 03 · Instant Delivery

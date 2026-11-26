@@ -1,7 +1,6 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { PrintingPressEngraving } from '../ui/BookcraftIllustrations';
-import { BookOpen, ArrowRight, Library, ShieldCheck, Compass, Layers } from 'lucide-react';
+import { BookOpen, ArrowRight, Library, ShieldCheck, Layers } from 'lucide-react';
 
 interface HeroProps {
   onOpenReadingStudio?: () => void;
@@ -36,8 +35,6 @@ export const Hero: React.FC<HeroProps> = ({ onOpenReadingStudio, onOpenOrderLook
           <div className="max-w-2xl space-y-4">
             <div className="flex items-center gap-2 text-xs font-medium tracking-[0.18em] uppercase text-[#686B78]">
               <span>Independent Publishing House</span>
-              <span aria-hidden="true" className="text-[#171D50]/30">·</span>
-              <span>Est. 2024</span>
               <span aria-hidden="true" className="text-[#171D50]/30">·</span>
               <span>Dhaka & Global</span>
             </div>
@@ -79,7 +76,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenReadingStudio, onOpenOrderLook
         </div>
 
         {/* =====================================================================
-            ASMMETRIC DRIBBBLE BENTO GRID (Dark Anchor Card + 2x2 Pastel Tiles)
+            ASYMMETRIC DRIBBBLE BENTO GRID (Dark Anchor Card + 2x2 Pastel Tiles)
            ===================================================================== */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
           {/* LEFT: Dark Obsidian/Navy Anchor Card */}
@@ -163,16 +160,20 @@ export const Hero: React.FC<HeroProps> = ({ onOpenReadingStudio, onOpenOrderLook
                   </div>
                 </div>
 
-                {/* Middle: Tactile Bookcraft Line-Art Frame + Quote */}
-                <div className="relative my-6 grid grid-cols-1 sm:grid-cols-12 gap-5 items-center bg-white/[0.06] border border-white/10 rounded-2xl p-5">
-                  <div className="sm:col-span-5 h-32 flex items-center justify-center">
-                    <PrintingPressEngraving className="w-full h-full" strokeColor="#FFFFFF" />
+                {/* Middle: Luminous Alabaster Illustration Stage + Editorial Quote */}
+                <div className="relative my-6 grid grid-cols-1 sm:grid-cols-12 gap-5 items-center bg-white/[0.06] border border-white/10 rounded-2xl p-4 sm:p-5">
+                  <div className="sm:col-span-5 bg-[#EAE6FF] rounded-2xl p-2 h-40 flex items-center justify-center overflow-hidden shadow-xs">
+                    <img
+                      src="/assets/aistudio/Ebook-rafiki_016c9ebe.svg"
+                      alt="Digital ebook reading illustration"
+                      className="w-full h-full object-contain"
+                    />
                   </div>
-                  <div className="sm:col-span-7 space-y-2">
+                  <div className="sm:col-span-7 space-y-2.5">
                     <p className="font-editorial italic text-base sm:text-lg text-white/95 leading-snug">
                       “True reading is an unhurried architectural dialogue between author and reader.”
                     </p>
-                    <div className="text-[11px] text-white/60 tracking-wide">
+                    <div className="text-[11px] text-white/65 tracking-wide">
                       DRM-Free PDF & EPUB · Interactive Specimen
                     </div>
                   </div>
@@ -182,7 +183,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenReadingStudio, onOpenOrderLook
                 <div className="relative flex flex-wrap items-center justify-between gap-4 pt-2">
                   <div className="flex items-center gap-4 text-xs text-white/70">
                     <div>
-                      <span className="font-semibold text-white">3 Essays</span> · Live Type Controls
+                      <span className="font-semibold text-white">Live Type Controls</span> · Custom Themes
                     </div>
                   </div>
                   {onOpenReadingStudio && (

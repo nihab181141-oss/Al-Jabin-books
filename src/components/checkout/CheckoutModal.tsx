@@ -143,7 +143,7 @@ export const CheckoutModal: React.FC = () => {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Farhan Mahmud"
+                    placeholder="Full Name"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     className="w-full px-4 py-2.5 text-xs border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none rounded-xl bg-white"
@@ -169,7 +169,7 @@ export const CheckoutModal: React.FC = () => {
                   <input
                     type="tel"
                     required
-                    placeholder="017XXXXXXXX"
+                    placeholder="Phone number"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
                     className="w-full px-4 py-2.5 text-xs border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none rounded-xl bg-white"
@@ -208,9 +208,6 @@ export const CheckoutModal: React.FC = () => {
                   <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
                     Merchant Send Money / Counter Payment with Transaction ID (TrxID).
                   </p>
-                  <div className="mt-2 text-[10px] text-[#686B78]">
-                    Number: 01700-000000
-                  </div>
                 </button>
 
                 {/* Direct Nagad MFS */}
@@ -233,9 +230,6 @@ export const CheckoutModal: React.FC = () => {
                   <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
                     Nagad Payment / Send Money with Transaction ID (TrxID).
                   </p>
-                  <div className="mt-2 text-[10px] text-[#686B78]">
-                    Number: 01700-000000
-                  </div>
                 </button>
 
                 {/* Direct Rocket MFS */}
@@ -258,9 +252,6 @@ export const CheckoutModal: React.FC = () => {
                   <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
                     DBBL Rocket transfer with confirmation Transaction ID (TrxID).
                   </p>
-                  <div className="mt-2 text-[10px] text-[#686B78]">
-                    Number: 01700-000000
-                  </div>
                 </button>
 
                 {/* Card / International */}
@@ -298,13 +289,13 @@ export const CheckoutModal: React.FC = () => {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. 9K72B8XQ"
+                    placeholder="Transaction ID"
                     value={transactionId}
                     onChange={(e) => setTransactionId(e.target.value)}
                     className="w-full px-4 py-2 text-xs font-mono uppercase bg-white border border-[#E8E9F0] rounded-xl focus:border-[#171D50] focus:outline-none"
                   />
                   <p className="text-[11px] text-[#686B78]">
-                    Send ৳{finalTotal} to our official merchant account (01700-000000) and paste the confirmation TrxID.
+                    Enter the confirmation Transaction ID (TrxID) from your {paymentMethod.toUpperCase()} receipt for ৳{finalTotal}.
                   </p>
                 </div>
               )}

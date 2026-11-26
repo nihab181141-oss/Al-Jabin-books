@@ -107,15 +107,12 @@ interface ServerCoupon {
   isActive: boolean;
 }
 
-// Initial in-memory data store for server-authoritative logic
+// Server-authoritative data store (empty until real records are created)
 const database = {
   products: new Map<string, ServerProduct>(),
   orders: new Map<string, ServerOrder>(),
   downloads: new Map<string, ServerDownload>(),
-  coupons: new Map<string, ServerCoupon>([
-    ['ALJABIN15', { code: 'ALJABIN15', discountType: 'percentage', discountValue: 15, minimumOrderValue: 400, usageLimit: 100, usageCount: 2, isActive: true }],
-    ['EDITORIAL', { code: 'EDITORIAL', discountType: 'percentage', discountValue: 20, minimumOrderValue: 600, usageLimit: 50, usageCount: 5, isActive: true }],
-  ]),
+  coupons: new Map<string, ServerCoupon>(),
 };
 
 /* =========================================================================
@@ -227,17 +224,14 @@ app.post('/api/orders/create', (req: Request, res: Response) => {
 
     for (const item of items) {
       const product = database.products.get(item.id);
-      let price = 0;
-      let title = item.title || 'Digital Volume';
-
-      if (product) {
-        price = currency === 'USD' ? product.priceUSD : product.priceBDT;
-        title = product.title;
-      } else {
-        // Fallback for catalog books if not yet in server map
-        price = Number(item.price) || 350;
+      if (!product || !product.isPublished) {
+        return res.status(400).json({
+          error: `Publication "${item.title || item.id}" is not available in the verified catalogue.`,
+        });
       }
 
+      const price = currency === 'USD' ? product.priceUSD : product.priceBDT;
+      const title = product.title;
       const qty = Math.max(1, parseInt(item.quantity) || 1);
       calculatedSubtotal += price * qty;
       validatedItems.push({

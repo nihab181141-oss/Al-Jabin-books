@@ -20,7 +20,7 @@ import {
   signOut,
   updateProfile,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
 
 interface StoreContextType {
   // Books catalog
@@ -102,16 +102,8 @@ const DEFAULT_LOGO_NAVY = '/assets/logos/al-jabin-logo-navy-on-white.svg';
 const DEFAULT_LOGO_WHITE = '/assets/logos/al-jabin-logo-white-on-navy.svg';
 
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Books State
-  const [books, setBooks] = useState<Book[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.BOOKS);
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // fallback
-    }
-    return [];
-  });
+  // Books State — strictly real published titles from Firestore / backend
+  const [books, setBooks] = useState<Book[]>([]);
 
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [previewSampleBook, setPreviewSampleBook] = useState<Book | null>(null);
@@ -128,13 +120,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
   // Coupons State
-  const [coupons, setCoupons] = useState<Coupon[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.COUPONS);
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return INITIAL_COUPONS;
-  });
+  const [coupons] = useState<Coupon[]>(INITIAL_COUPONS);
   const [activeCoupon, setActiveCoupon] = useState<Coupon | null>(null);
 
   // Orders State
@@ -177,26 +163,52 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToastMessage(msg);
   };
 
-  // Sync to local storage
+  // Clear any legacy cached fake book/coupon keys and fetch real published catalog
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEYS.BOOKS, JSON.stringify(books));
-  }, [books]);
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_KEYS.BOOKS);
+      localStorage.removeItem(LOCAL_STORAGE_KEYS.COUPONS);
+    } catch {}
 
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEYS.CART, JSON.stringify(cart));
-  }, [cart]);
+    const fetchPublishedCatalog = async () => {
+      try {
+        const productsQuery = query(collection(db, 'products'), where('isPublished', '==', true));
+        const snapshot = await getDocs(productsQuery);
+        if (!snapshot.empty) {
+          const firestoreBooks: Book[] = snapshot.docs.map((docSnap) => {
+            const d = docSnap.data() as Record<string, any>;
+            return {
+              id: docSnap.id,
+              title: String(d.title || ''),
+              subtitle: d.subtitle ? String(d.subtitle) : undefined,
+              author: String(d.author || ''),
+              category: d.category || 'Personal Growth',
+              price: Number(d.priceBDT ?? d.price ?? 0),
+              priceUSD: d.priceUSD ? Number(d.priceUSD) : undefined,
+              originalPrice: d.originalPrice ? Number(d.originalPrice) : undefined,
+              discountPercentage: d.discountPercentage ? Number(d.discountPercentage) : undefined,
+              isFeatured: Boolean(d.isFeatured),
+              isNewRelease: Boolean(d.isNewRelease),
+              coverImage: String(d.coverImage || ''),
+              format: String(d.format || 'PDF & EPUB'),
+              fileSize: String(d.fileSize || ''),
+              pages: Number(d.pages || 0),
+              language: String(d.language || 'English'),
+              isbn: String(d.isbn || ''),
+              publishedYear: Number(d.publishedYear || new Date().getFullYear()),
+              description: String(d.description || d.shortDescription || ''),
+              keyTakeaways: Array.isArray(d.keyTakeaways) ? d.keyTakeaways : [],
+              sampleChapters: Array.isArray(d.sampleChapters) ? d.sampleChapters : [],
+              downloadFileKey: String(d.originalFileStoragePath || docSnap.id),
+            };
+          });
+          setBooks(firestoreBooks);
+          return;
+        }
+      } catch {
+        // Fallback to server catalog endpoint
+      }
 
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEYS.ORDERS, JSON.stringify(orders));
-  }, [orders]);
-
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEYS.COUPONS, JSON.stringify(coupons));
-  }, [coupons]);
-
-  // Sync products from server on mount
-  useEffect(() => {
-    const fetchServerProducts = async () => {
       try {
         const res = await fetch('/api/products');
         if (res.ok) {
@@ -205,11 +217,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             setBooks(data.products);
           }
         }
-      } catch (e) {
-        // quiet fallback
+      } catch {
+        // Leave empty when no real books exist
       }
     };
-    fetchServerProducts();
+    fetchPublishedCatalog();
   }, []);
 
   // Firebase Auth Listener

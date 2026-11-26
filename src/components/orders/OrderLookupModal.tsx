@@ -181,12 +181,12 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
           <div className="p-6 sm:p-8 overflow-y-auto space-y-6 flex-1 text-left">
             <form onSubmit={handleSearch} className="space-y-3">
               <label className="block text-xs font-medium text-[#171923]">
-                Enter Order ID (e.g. AJP-123456)
+                Enter Order ID
               </label>
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="AJP-... or order_..."
+                  placeholder="Enter your Order ID"
                   value={query}
                   onChange={(e) => {
                     setQuery(e.target.value);
@@ -211,6 +211,24 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
               <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-2xl flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{lookupError}</span>
+              </div>
+            )}
+
+            {!searchedOrder && !lookupError && (
+              <div className="bg-[#FAF7F0] border border-[#EBE6DF] rounded-2xl p-6 flex flex-col sm:flex-row items-center gap-5">
+                <div className="w-32 h-32 shrink-0 bg-[#E1EEFF] rounded-2xl p-2 flex items-center justify-center">
+                  <img
+                    src="/assets/aistudio/Hotel_Booking-cuate_3b3357b3.svg"
+                    alt="Mobile order verification illustration"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                <div className="space-y-1.5 text-center sm:text-left">
+                  <h4 className="font-editorial text-base text-[#171923]">Instant Order Verification</h4>
+                  <p className="text-xs text-[#686B78] font-light leading-relaxed">
+                    Enter the Order ID from your confirmation receipt to verify payment status and retrieve your DRM-free ebook files.
+                  </p>
+                </div>
               </div>
             )}
 
@@ -279,8 +297,14 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
         {activeTab === 'library' && (
           <div className="p-6 sm:p-8 overflow-y-auto space-y-6 flex-1 text-left">
             {!currentUser ? (
-              <div className="text-center py-10 space-y-4">
-                <BookOpen className="w-10 h-10 text-[#171D50]/40 mx-auto" />
+              <div className="text-center py-8 space-y-4">
+                <div className="w-40 h-40 mx-auto bg-[#FFE2DB]/65 rounded-3xl p-3 flex items-center justify-center">
+                  <img
+                    src="/assets/aistudio/Bookmarks-pana_fc1b81f4.svg"
+                    alt="Digital reader library illustration"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
                 <h4 className="font-editorial text-xl text-[#171923]">Sign in to access your digital library</h4>
                 <p className="text-xs text-[#686B78] max-w-sm mx-auto font-light">
                   All your purchased DRM-free ebooks are safely stored and permanently accessible under your verified customer account.
@@ -293,8 +317,14 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
                 </button>
               </div>
             ) : userLibrary.length === 0 ? (
-              <div className="text-center py-12 space-y-3 bg-[#FAF7F0] border border-[#EBE6DF] rounded-2xl">
-                <BookOpen className="w-8 h-8 text-[#171D50]/40 mx-auto" />
+              <div className="text-center py-8 px-6 space-y-4 bg-[#FAF7F0] border border-[#EBE6DF] rounded-2xl">
+                <div className="w-36 h-36 mx-auto bg-[#FFE2DB]/65 rounded-2xl p-3 flex items-center justify-center">
+                  <img
+                    src="/assets/aistudio/Bookmarks-pana_fc1b81f4.svg"
+                    alt="Empty reader shelf illustration"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
                 <h4 className="font-editorial text-lg text-[#171923]">No Ebooks in Library Yet</h4>
                 <p className="text-xs text-[#686B78] font-light max-w-sm mx-auto">
                   When you complete a purchase, your DRM-free editions will instantly appear here with permanent download access.
@@ -409,7 +439,7 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
                         type="text"
                         value={authName}
                         onChange={(e) => setAuthName(e.target.value)}
-                        placeholder="Farhan Mahmud"
+                        placeholder="Your full name"
                         className="w-full px-4 py-2.5 text-xs border border-[#E8E9F0] rounded-xl focus:border-[#171D50] focus:outline-none"
                       />
                     </div>

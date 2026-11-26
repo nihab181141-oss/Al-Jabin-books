@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { Mail, CheckCircle2, AlertCircle, ShieldCheck, Feather } from 'lucide-react';
-import { WritingDeskSanctuary } from '../ui/BookcraftIllustrations';
 
 export const NewsletterSection: React.FC = () => {
   const { subscribeNewsletter } = useStore();
@@ -61,8 +60,12 @@ export const NewsletterSection: React.FC = () => {
               <span>Private Correspondence</span>
             </div>
 
-            <div className="relative my-6 h-36 flex items-center justify-center">
-              <WritingDeskSanctuary className="w-full h-full" strokeColor="#FFFFFF" />
+            <div className="relative my-5 bg-[#EAE6FF] rounded-2xl p-3 h-44 flex items-center justify-center overflow-hidden shadow-xs">
+              <img
+                src="/assets/aistudio/Online_world-amico_9426eeb6.svg"
+                alt="Global reader dispatches and digital correspondence illustration"
+                className="w-full h-full object-contain"
+              />
             </div>
 
             <div className="relative space-y-1">

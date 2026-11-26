@@ -11,7 +11,7 @@ export const SampleReaderModal: React.FC = () => {
   const chapters = previewSampleBook.sampleChapters || [];
   const currentChapter = chapters[activeChapterIndex] || {
     title: 'Sample Excerpt',
-    pageCount: 12,
+    pageCount: previewSampleBook.pages || 0,
     excerpt: previewSampleBook.description,
   };
 
@@ -54,12 +54,6 @@ export const SampleReaderModal: React.FC = () => {
           <div className="font-serif text-[#171923] text-base sm:text-lg leading-relaxed space-y-6">
             <p className="first-letter:text-5xl first-letter:font-editorial first-letter:float-left first-letter:mr-3 first-letter:text-[#171D50] first-letter:leading-none">
               {currentChapter.excerpt}
-            </p>
-            <p className="text-sm sm:text-base font-sans text-[#686B78] leading-relaxed italic border-l-2 border-[#171D50] pl-4 py-1">
-              "Clarity of thought is rarely found in consensus. The durable insights that transform personal agency emerge in the silence between decisions."
-            </p>
-            <p className="text-sm sm:text-base font-sans text-[#686B78] leading-relaxed">
-              In this volume, readers will uncover foundational models designed to evaluate complex modern dilemmas without falling prey to reflexive reactionism. Continue reading the full unabridged publication across all digital devices.
             </p>
           </div>
 

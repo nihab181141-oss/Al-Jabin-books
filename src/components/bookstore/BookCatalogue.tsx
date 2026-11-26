@@ -145,30 +145,47 @@ export const BookCatalogue: React.FC<BookCatalogueProps> = ({ onOpenReadingStudi
           </div>
         ) : books.length === 0 ? (
           /* Clean Tactile Curation Card (Zero Fake Books) */
-          <div className="bg-[#F5F4EF] rounded-[30px] p-10 sm:p-14 text-center max-w-2xl mx-auto">
-            <div className="w-14 h-14 bg-white rounded-2xl shadow-2xs flex items-center justify-center mx-auto mb-5 text-[#171D50]">
-              <BookMarked className="w-6 h-6" />
+          <div className="bg-[#F5F4EF] rounded-[30px] p-8 sm:p-12 max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
+            <div className="md:col-span-5 bg-[#FFF2C6] rounded-2xl p-4 flex items-center justify-center aspect-[3/2] shadow-2xs">
+              <img
+                src="/assets/aistudio/Bookshop-cuate_9a8c56b6.svg"
+                alt="Curated digital bookshop shelves illustration"
+                className="w-full h-full object-contain"
+              />
             </div>
-            <h3 className="text-2xl font-bold tracking-[-0.02em] text-[#171923] mb-2">
-              Catalogue Curation in Progress
-            </h3>
-            <p className="text-xs sm:text-sm text-[#575A66] font-normal leading-relaxed max-w-md mx-auto mb-7">
-              Our inaugural publications are undergoing final editorial typesetting. Experience our digital reading architecture live in the Reading Studio while titles prepare for release.
-            </p>
-            {onOpenReadingStudio && (
-              <button
-                onClick={onOpenReadingStudio}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-[#171D50] text-white text-xs font-semibold rounded-full hover:bg-[#0f1338] transition-all cursor-pointer shadow-sm"
-              >
-                <span>Open Reading Specimen Studio</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <div className="md:col-span-7 text-center md:text-left space-y-3">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-[#784A00] font-semibold">
+                Curated Release Queue
+              </div>
+              <h3 className="text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-[#171923]">
+                Catalogue Curation in Progress
+              </h3>
+              <p className="text-xs sm:text-sm text-[#575A66] font-normal leading-relaxed max-w-md mx-auto md:mx-0">
+                Our inaugural publications are undergoing final editorial typesetting. Experience our digital reading architecture live in the Reading Studio while titles prepare for release.
+              </p>
+              {onOpenReadingStudio && (
+                <div className="pt-2">
+                  <button
+                    onClick={onOpenReadingStudio}
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-[#171D50] text-white text-xs font-semibold rounded-full hover:bg-[#0f1338] transition-all cursor-pointer shadow-sm"
+                  >
+                    <span>Open Reading Specimen Studio</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           /* Filter Mismatch State */
-          <div className="text-center py-16 px-6 bg-[#F5F4EF] rounded-[30px] max-w-xl mx-auto">
-            <BookMarked className="w-10 h-10 text-[#686B78]/40 mx-auto mb-3" />
+          <div className="text-center py-12 px-6 bg-[#F5F4EF] rounded-[30px] max-w-xl mx-auto">
+            <div className="w-48 h-32 mx-auto mb-4 bg-white rounded-2xl p-3 flex items-center justify-center shadow-2xs">
+              <img
+                src="/assets/aistudio/Bookshop-cuate_9a8c56b6.svg"
+                alt="Bookshop shelves illustration"
+                className="w-full h-full object-contain"
+              />
+            </div>
             <h3 className="text-xl font-bold tracking-tight text-[#171923] mb-1">
               No matching publications found
             </h3>

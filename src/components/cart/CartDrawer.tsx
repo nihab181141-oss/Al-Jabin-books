@@ -71,17 +71,25 @@ export const CartDrawer: React.FC = () => {
           {/* Cart Item List */}
           <div className="flex-1 overflow-y-auto p-6 space-y-4">
             {cart.length === 0 ? (
-              <div className="text-center py-16 space-y-3">
-                <ShoppingBag className="w-12 h-12 text-[#686B78]/30 mx-auto" />
-                <h4 className="font-editorial text-lg text-[#171923]">
-                  Your bag is currently empty
-                </h4>
-                <p className="text-xs text-[#686B78] max-w-xs mx-auto leading-relaxed font-light">
-                  Explore our bookstore catalogue to discover thoughtful publications and practical manuals.
-                </p>
+              <div className="text-center py-10 space-y-4">
+                <div className="w-48 h-48 mx-auto bg-[#E9F3F0] rounded-3xl p-4 flex items-center justify-center shadow-2xs">
+                  <img
+                    src="/assets/aistudio/Bookshop-bro_04087275.svg"
+                    alt="Empty reading bag illustration"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <h4 className="font-editorial text-lg text-[#171923]">
+                    Your bag is currently empty
+                  </h4>
+                  <p className="text-xs text-[#686B78] max-w-xs mx-auto leading-relaxed font-light">
+                    Explore our bookstore catalogue to discover thoughtful publications and practical manuals.
+                  </p>
+                </div>
                 <button
                   onClick={() => setIsCartOpen(false)}
-                  className="mt-4 px-6 py-2.5 bg-[#171D50] text-white text-xs font-semibold tracking-wider uppercase hover:bg-[#0f1338] rounded-full transition-colors"
+                  className="mt-2 px-6 py-2.5 bg-[#171D50] text-white text-xs font-semibold tracking-wider uppercase hover:bg-[#0f1338] rounded-full transition-colors cursor-pointer"
                 >
                   Browse Books
                 </button>
@@ -162,7 +170,7 @@ export const CartDrawer: React.FC = () => {
                     <Tag className="w-3.5 h-3.5 text-[#686B78] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       type="text"
-                      placeholder="Coupon (e.g. BENGALREADS)"
+                      placeholder="Enter promo code"
                       value={couponInput}
                       onChange={(e) => {
                         setCouponInput(e.target.value);
