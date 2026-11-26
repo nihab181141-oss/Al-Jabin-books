@@ -149,6 +149,10 @@ Purchased via https://aljabinpublications.com
             <div className="space-y-3">
               {confirmedOrder.items.map((item, idx) => {
                 const bookMeta = books.find((b) => b.id === item.bookId);
+                const dlToken =
+                  confirmedOrder.downloads?.find(
+                    (d) => d.productId === item.bookId || d.productTitle === item.title
+                  ) || confirmedOrder.downloads?.[idx];
                 return (
                   <div
                     key={idx}
@@ -181,13 +185,25 @@ Purchased via https://aljabinpublications.com
                         </button>
                       )}
 
-                      <button
-                        onClick={() => handleDownload(item.bookId, item.title, 'PDF')}
-                        className="px-4 py-1.5 bg-[#171D50] text-white text-xs font-semibold hover:bg-[#0f1338] rounded-full transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>PDF</span>
-                      </button>
+                      {dlToken?.downloadUrl ? (
+                        <a
+                          href={dlToken.downloadUrl}
+                          download
+                          onClick={() => showToast(`Downloading "${item.title}" (PDF)...`)}
+                          className="px-4 py-1.5 bg-[#171D50] text-white text-xs font-semibold hover:bg-[#0f1338] rounded-full transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>PDF</span>
+                        </a>
+                      ) : (
+                        <button
+                          onClick={() => handleDownload(item.bookId, item.title, 'PDF')}
+                          className="px-4 py-1.5 bg-[#171D50] text-white text-xs font-semibold hover:bg-[#0f1338] rounded-full transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>PDF</span>
+                        </button>
+                      )}
 
                       <button
                         onClick={() => handleDownload(item.bookId, item.title, 'EPUB')}

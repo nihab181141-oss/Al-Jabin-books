@@ -2,21 +2,39 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Public book covers and sample reading excerpts
-    match /covers/{allPaths=**} {
-      allow read: if true;
-      allow write: if false;
+    // Global default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
 
+    // Public book cover artwork (read-only publicly, writable only by owning author with strict image limits)
+    match /covers/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && fileName.size() <= 128
+        && request.resource != null
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/(png|jpeg|webp|svg\\+xml)');
+    }
+
+    // Public sample reading excerpts (read-only publicly, server-managed)
     match /samples/{allPaths=**} {
       allow read: if true;
       allow write: if false;
     }
 
-    // Original, unencrypted master ebook files: STRICTLY PRIVATE
-    // Download access is only granted via backend server stream
-    match /ebooks/{allPaths=**} {
-      allow read, write: if false;
+    // Private author-uploaded master ebook PDFs:
+    // Never publicly readable; only owning author may manage their own source file,
+    // and reader downloads are strictly served through tokenized backend delivery (/api/downloads/:token).
+    match /ebooks/{userId}/{fileName} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && fileName.size() <= 128
+        && request.resource != null
+        && request.resource.size < 25 * 1024 * 1024
+        && request.resource.contentType in ['application/pdf', 'text/plain', 'text/markdown'];
     }
   }
 }

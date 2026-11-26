@@ -3,6 +3,7 @@ import { useStore } from '../../context/StoreContext';
 import {
   ArrowLeft,
   ArrowRight,
+  BarChart3,
   BookOpen,
   CheckCircle2,
   Download,
@@ -19,12 +20,16 @@ import {
 interface AuthPageProps {
   onBackToStore: () => void;
   onOpenPublish: () => void;
+  onOpenDashboard?: () => void;
+  initialMode?: 'signin' | 'signup';
   redirectReason?: string | null;
 }
 
 export const AuthPage: React.FC<AuthPageProps> = ({
   onBackToStore,
   onOpenPublish,
+  onOpenDashboard,
+  initialMode = 'signup',
   redirectReason,
 }) => {
   const {
@@ -44,9 +49,15 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     logoIconColor,
   } = useStore();
 
-  const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signup');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  useEffect(() => {
+    setMode(initialMode);
+    setErrorMsg(null);
+    setStatusMsg(null);
+  }, [initialMode]);
 
   // Optional profile record fields on registration & profile editing
   const [displayName, setDisplayName] = useState('');
@@ -188,6 +199,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
           {currentUser && (
             <div className="flex flex-wrap items-center gap-2.5">
+              {onOpenDashboard && (
+                <button
+                  type="button"
+                  onClick={onOpenDashboard}
+                  className="inline-flex items-center gap-2 min-h-[42px] px-4 py-2 bg-white text-[#171D50] border border-black/[0.08] hover:border-[#171D50] text-xs font-semibold rounded-full transition-colors cursor-pointer"
+                >
+                  <BarChart3 className="w-3.5 h-3.5" />
+                  <span>Author Dashboard</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onOpenPublish}
@@ -222,15 +243,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               </div>
 
               <div className="space-y-3">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#686B78] font-semibold">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#D97706] font-extrabold">
                   Reader & Author Sanctuary
                 </div>
                 <h1
-                  className="font-editorial text-3xl sm:text-4xl text-[#171923] font-normal leading-[1.18]"
+                  className="text-3xl sm:text-5xl text-[#171923] font-extrabold tracking-[-0.035em] leading-[1.08]"
                   style={{ textWrap: 'balance' }}
                 >
                   Read Permanently.{' '}
-                  <span className="italic text-[#171D50]">Publish Independently.</span>
+                  <span className="font-editorial italic font-bold text-[#171D50]">
+                    Publish Independently.
+                  </span>
                 </h1>
                 <p className="text-sm text-[#575A66] leading-relaxed">
                   Create your free Al Jabin Publications account to store your digital library across devices or publish your own ebooks directly to the storefront.
@@ -301,7 +324,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               )}
 
               <div className="space-y-1">
-                <h2 className="font-editorial text-2xl sm:text-3xl text-[#171923]">
+                <h2 className="text-2xl sm:text-3xl font-extrabold tracking-[-0.025em] text-[#171923]">
                   {mode === 'reset'
                     ? 'Reset Your Password'
                     : mode === 'signup'
@@ -576,7 +599,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     {(userProfile?.displayName || currentUser.displayName || currentUser.email || 'A')[0].toUpperCase()}
                   </div>
                   <div>
-                    <h1 className="font-editorial text-2xl text-[#171923] leading-tight">
+                    <h1 className="text-2xl sm:text-3xl font-extrabold tracking-[-0.025em] text-[#171923] leading-tight">
                       {userProfile?.displayName || currentUser.displayName || 'Al Jabin Member'}
                     </h1>
                     <div className="text-xs text-[#686B78] flex items-center gap-1.5 mt-0.5">
@@ -702,7 +725,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               {/* Self-Published Books Card */}
               <div className="bg-white border border-black/[0.07] rounded-3xl p-6 shadow-sm space-y-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="font-editorial text-xl text-[#171923]">My Published Ebooks</h2>
+                  <h2 className="text-xl font-extrabold tracking-[-0.02em] text-[#171923]">
+                    My Published Ebooks
+                  </h2>
                   <span className="text-xs font-semibold text-[#686B78] tabular-nums">
                     {myPublishedBooks.length}
                   </span>
@@ -769,7 +794,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               {/* Purchased Library Card */}
               <div className="bg-white border border-black/[0.07] rounded-3xl p-6 shadow-sm space-y-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="font-editorial text-xl text-[#171923] flex items-center gap-2">
+                  <h2 className="text-xl font-extrabold tracking-[-0.02em] text-[#171923] flex items-center gap-2">
                     <BookOpen className="w-4 h-4 text-[#171D50]" />
                     <span>Purchased Digital Library</span>
                   </h2>

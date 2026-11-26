@@ -40,23 +40,23 @@ export const Hero: React.FC<HeroProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
           {/* LEFT: Editorial Statement & Primary Actions */}
           <div className="lg:col-span-6 space-y-6 text-center lg:text-left">
-            <div className="inline-flex items-center gap-2.5 text-xs font-medium tracking-[0.16em] uppercase text-[#686B78]">
+            <div className="inline-flex items-center gap-2.5 text-xs font-bold tracking-[0.18em] uppercase text-[#171D50]/75">
               <span>Independent Publishing House</span>
-              <span aria-hidden="true" className="text-[#171D50]/30">·</span>
+              <span aria-hidden="true" className="text-[#D97706]">·</span>
               <span>Read & Self-Publish</span>
             </div>
 
             <h1
-              className="text-4xl sm:text-5xl xl:text-[58px] font-bold text-[#171923] tracking-[-0.035em] leading-[1.08]"
+              className="text-4xl sm:text-6xl xl:text-[64px] font-extrabold text-[#171923] tracking-[-0.04em] leading-[1.02]"
               style={{ textWrap: 'balance' }}
             >
               Good Books.{' '}
-              <span className="font-editorial italic font-normal text-[#171D50]">
+              <span className="font-editorial italic font-bold text-[#171D50] underline decoration-[#D97706]/55 decoration-[3px] underline-offset-[10px]">
                 Better Perspectives.
               </span>
             </h1>
 
-            <p className="text-base sm:text-lg text-[#575A66] font-normal leading-relaxed max-w-xl mx-auto lg:mx-0">
+            <p className="text-base sm:text-lg text-[#4B4E59] font-normal leading-relaxed max-w-xl mx-auto lg:mx-0">
               Discover DRM-free digital editions, or open your own author account to publish and share your ebooks directly with readers.
             </p>
 
@@ -143,7 +143,7 @@ export const Hero: React.FC<HeroProps> = ({
                   alt="Digital ebook reading and self-publishing sanctuary illustration"
                   className="w-full max-w-[340px] sm:max-w-[420px] lg:max-w-[480px] h-auto object-contain select-none"
                 />
-                <p className="font-editorial italic text-sm sm:text-base text-[#171D50]/85 text-center max-w-md mt-2">
+                <p className="font-editorial italic font-semibold text-base sm:text-lg text-[#171D50]/90 text-center max-w-md mt-2">
                   “True reading is an unhurried dialogue between author and reader.”
                 </p>
               </div>
@@ -162,8 +162,8 @@ export const Hero: React.FC<HeroProps> = ({
               <BookOpen className="w-4 h-4" />
             </div>
             <div className="space-y-1 min-w-0">
-              <div className="text-[11px] font-semibold text-[#686B78] tabular-nums">01 · Specimen</div>
-              <h3 className="text-sm font-bold text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
+              <div className="text-[11px] font-bold text-[#D97706] tracking-wide tabular-nums">01 · Specimen</div>
+              <h3 className="text-base font-extrabold tracking-tight text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
                 <span>Reading Studio</span>
                 <ArrowRight className="w-3.5 h-3.5 opacity-50 group-hover:translate-x-0.5 group-hover:opacity-100 transition-all" />
               </h3>
@@ -182,8 +182,8 @@ export const Hero: React.FC<HeroProps> = ({
               <PenTool className="w-4 h-4" />
             </div>
             <div className="space-y-1 min-w-0">
-              <div className="text-[11px] font-semibold text-[#686B78] tabular-nums">02 · Authors</div>
-              <h3 className="text-sm font-bold text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
+              <div className="text-[11px] font-bold text-[#D97706] tracking-wide tabular-nums">02 · Authors</div>
+              <h3 className="text-base font-extrabold tracking-tight text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
                 <span>Publish Ebook</span>
                 <ArrowRight className="w-3.5 h-3.5 opacity-50 group-hover:translate-x-0.5 group-hover:opacity-100 transition-all" />
               </h3>
@@ -202,8 +202,8 @@ export const Hero: React.FC<HeroProps> = ({
               <User className="w-4 h-4" />
             </div>
             <div className="space-y-1 min-w-0">
-              <div className="text-[11px] font-semibold text-[#686B78] tabular-nums">03 · Account</div>
-              <h3 className="text-sm font-bold text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
+              <div className="text-[11px] font-bold text-[#D97706] tracking-wide tabular-nums">03 · Account</div>
+              <h3 className="text-base font-extrabold tracking-tight text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
                 <span>{currentUser ? 'Author Profile' : 'Sign Up / Login'}</span>
                 <ArrowRight className="w-3.5 h-3.5 opacity-50 group-hover:translate-x-0.5 group-hover:opacity-100 transition-all" />
               </h3>
@@ -222,8 +222,8 @@ export const Hero: React.FC<HeroProps> = ({
               <ShieldCheck className="w-4 h-4" />
             </div>
             <div className="space-y-1 min-w-0">
-              <div className="text-[11px] font-semibold text-[#686B78] tabular-nums">04 · Access</div>
-              <h3 className="text-sm font-bold text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
+              <div className="text-[11px] font-bold text-[#D97706] tracking-wide tabular-nums">04 · Access</div>
+              <h3 className="text-base font-extrabold tracking-tight text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
                 <span>Find Order & Library</span>
                 <ArrowRight className="w-3.5 h-3.5 opacity-50 group-hover:translate-x-0.5 group-hover:opacity-100 transition-all" />
               </h3>

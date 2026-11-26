@@ -55,11 +55,11 @@ export const NewsletterSection: React.FC = () => {
             </div>
 
             <div className="mt-4 pt-4 border-t border-black/[0.08] w-full max-w-sm space-y-1.5">
-              <div className="flex items-center justify-center lg:justify-start gap-2 text-[11px] uppercase tracking-[0.2em] text-[#686B78] font-semibold">
+              <div className="flex items-center justify-center lg:justify-start gap-2 text-[11px] uppercase tracking-[0.2em] text-[#D97706] font-bold">
                 <Feather className="w-3.5 h-3.5 text-[#171D50]" />
                 <span>Private Correspondence</span>
               </div>
-              <div className="font-editorial italic text-xl text-[#171923]">
+              <div className="font-editorial italic font-bold text-2xl text-[#171D50]">
                 Sunday Morning Essays
               </div>
               <p className="text-xs sm:text-sm text-[#575A66] font-normal leading-relaxed">
@@ -71,15 +71,18 @@ export const NewsletterSection: React.FC = () => {
           {/* Right: Open Subscription Form Column */}
           <div className="lg:col-span-7 flex flex-col justify-center space-y-6">
             <div className="space-y-3 text-center lg:text-left">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-[#686B78] font-semibold">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-[#D97706] font-bold">
                 Reader Dispatches
               </div>
 
               <h2
-                className="text-3xl sm:text-4xl font-bold tracking-[-0.03em] text-[#171923] leading-tight"
+                className="text-3xl sm:text-5xl font-extrabold tracking-[-0.035em] text-[#171923] leading-[1.08]"
                 style={{ textWrap: 'balance' }}
               >
-                Thoughtful Dispatches, Directly to Your Sanctuary
+                Thoughtful Dispatches, Directly to{' '}
+                <span className="font-editorial italic font-bold text-[#171D50]">
+                  Your Sanctuary
+                </span>
               </h2>
 
               <p className="text-sm sm:text-base text-[#575A66] leading-relaxed max-w-xl mx-auto lg:mx-0">

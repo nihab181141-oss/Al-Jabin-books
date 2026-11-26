@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -32,10 +33,157 @@ function resolvePort(): number {
 
 const PORT = resolvePort();
 
-// Middlewares
+/* =========================================================================
+   Firebase Project Config & Private Ebook Disk Vault
+   ========================================================================= */
+interface FirebaseAppletConfig {
+  projectId: string;
+  firestoreDatabaseId?: string;
+}
+
+function loadFirebaseConfig(): FirebaseAppletConfig {
+  try {
+    const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
+    const raw = fs.readFileSync(configPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return {
+      projectId: String(parsed.projectId || ''),
+      firestoreDatabaseId: parsed.firestoreDatabaseId ? String(parsed.firestoreDatabaseId) : '(default)',
+    };
+  } catch {
+    return { projectId: '', firestoreDatabaseId: '(default)' };
+  }
+}
+
+const PRIVATE_EBOOKS_DIR = path.resolve(process.cwd(), '.private_ebooks');
+fs.mkdirSync(PRIVATE_EBOOKS_DIR, { recursive: true });
+
+const MAX_PDF_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MB
+const PRODUCT_ID_REGEX = /^[a-zA-Z0-9_-]{3,128}$/;
+
+function resolveVaultPdfPath(productId: string): string | null {
+  if (!PRODUCT_ID_REGEX.test(productId)) {
+    return null;
+  }
+  const resolved = path.resolve(PRIVATE_EBOOKS_DIR, `${productId}.pdf`);
+  if (!resolved.startsWith(PRIVATE_EBOOKS_DIR + path.sep)) {
+    return null;
+  }
+  return resolved;
+}
+
+function hasStoredPdf(productId: string): boolean {
+  const vaultPath = resolveVaultPdfPath(productId);
+  if (!vaultPath) return false;
+  try {
+    return fs.existsSync(vaultPath) && fs.statSync(vaultPath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/* =========================================================================
+   Cryptographic Firebase ID Token Verification (No IAM / Key Files Needed)
+   ========================================================================= */
+interface VerifiedFirebaseUser {
+  uid: string;
+  email?: string;
+}
+
+let cachedCerts: Record<string, string> = {};
+let certsExpiresAtMs = 0;
+
+async function getFirebasePublicCerts(): Promise<Record<string, string>> {
+  const now = Date.now();
+  if (certsExpiresAtMs > now && Object.keys(cachedCerts).length > 0) {
+    return cachedCerts;
+  }
+  const response = await fetch(
+    'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com'
+  );
+  if (!response.ok) {
+    throw new Error('Failed to retrieve Google public verification keys.');
+  }
+  const certs = (await response.json()) as Record<string, string>;
+  const cacheControl = response.headers.get('cache-control') || '';
+  const maxAgeMatch = cacheControl.match(/max-age=(\d+)/i);
+  const maxAgeSec = maxAgeMatch ? Math.max(60, parseInt(maxAgeMatch[1], 10)) : 3600;
+  cachedCerts = certs;
+  certsExpiresAtMs = now + maxAgeSec * 1000;
+  return cachedCerts;
+}
+
+function decodeBase64Url(input: string): Buffer {
+  const padded = input.replace(/-/g, '+').replace(/_/g, '/');
+  const mod = padded.length % 4;
+  const normalized = mod === 0 ? padded : padded + '='.repeat(4 - mod);
+  return Buffer.from(normalized, 'base64');
+}
+
+async function verifyFirebaseIdToken(authHeader?: string): Promise<VerifiedFirebaseUser | null> {
+  if (!authHeader || typeof authHeader !== 'string') return null;
+  const match = authHeader.match(/^Bearer\s+([A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+\.[A-Za-z0-9\-_]+)$/);
+  if (!match) return null;
+
+  const token = match[1];
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+
+  try {
+    const header = JSON.parse(decodeBase64Url(parts[0]).toString('utf8'));
+    const payload = JSON.parse(decodeBase64Url(parts[1]).toString('utf8'));
+    const signature = decodeBase64Url(parts[2]);
+
+    if (header.alg !== 'RS256' || typeof header.kid !== 'string' || !header.kid) {
+      return null;
+    }
+
+    const certs = await getFirebasePublicCerts();
+    const certPem = certs[header.kid];
+    if (!certPem) {
+      return null;
+    }
+
+    const verifier = crypto.createVerify('RSA-SHA256');
+    verifier.update(`${parts[0]}.${parts[1]}`);
+    verifier.end();
+    if (!verifier.verify(certPem, signature)) {
+      return null;
+    }
+
+    const { projectId } = loadFirebaseConfig();
+    if (!projectId) return null;
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (
+      payload.aud !== projectId ||
+      payload.iss !== `https://securetoken.google.com/${projectId}` ||
+      typeof payload.exp !== 'number' ||
+      payload.exp <= nowSec ||
+      typeof payload.iat !== 'number' ||
+      payload.iat > nowSec + 300 ||
+      typeof payload.auth_time !== 'number' ||
+      payload.auth_time > nowSec + 300 ||
+      typeof payload.sub !== 'string' ||
+      payload.sub.length === 0 ||
+      payload.sub.length > 128
+    ) {
+      return null;
+    }
+
+    return {
+      uid: payload.sub,
+      email: typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Middlewares (22MB limit supports up to 15MB base64-encoded PDF payloads)
 app.use(cors());
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+app.use(express.json({ limit: '22mb' }));
+app.use(express.urlencoded({ extended: true, limit: '22mb' }));
 
 interface SampleChapter {
   title: string;
@@ -64,6 +212,36 @@ interface ServerProduct {
   keyTakeaways: string[];
   sampleChapters: SampleChapter[];
   manuscriptContent?: string;
+  hasUploadedPdf?: boolean;
+  isPublished: boolean;
+  isNewRelease?: boolean;
+  isFeatured?: boolean;
+  publishedYear: number;
+  downloadFileKey: string;
+  createdAt: string;
+}
+
+interface PublicProductView {
+  id: string;
+  ownerId: string;
+  title: string;
+  slug: string;
+  subtitle?: string;
+  description: string;
+  author: string;
+  category: 'Personal Growth' | 'Mindset' | 'Productivity' | 'Fiction';
+  coverImage: string;
+  price: number;
+  priceBDT: number;
+  priceUSD: number;
+  format: string;
+  fileSize: string;
+  pages: number;
+  language: string;
+  isbn: string;
+  keyTakeaways: string[];
+  sampleChapters: SampleChapter[];
+  hasUploadedPdf?: boolean;
   isPublished: boolean;
   isNewRelease?: boolean;
   isFeatured?: boolean;
@@ -101,6 +279,7 @@ interface ServerDownload {
   id: string;
   orderId: string;
   orderNumber: string;
+  userId?: string;
   customerEmail: string;
   productId: string;
   productTitle: string;
@@ -129,6 +308,110 @@ const database = {
   downloads: new Map<string, ServerDownload>(),
   coupons: new Map<string, ServerCoupon>(),
 };
+
+// Strip private manuscript & internal binary fields from any public API response
+function toPublicProduct(product: ServerProduct): PublicProductView {
+  const { manuscriptContent: _omitted, ...publicFields } = product;
+  return {
+    ...publicFields,
+    hasUploadedPdf: Boolean(product.hasUploadedPdf || hasStoredPdf(product.id)),
+  };
+}
+
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!local || !domain) return '***';
+  const visible = local.slice(0, 2);
+  return `${visible}***@${domain}`;
+}
+
+function parseFirestoreValue(val: any): any {
+  if (!val || typeof val !== 'object') return undefined;
+  if ('stringValue' in val) return val.stringValue;
+  if ('booleanValue' in val) return val.booleanValue;
+  if ('integerValue' in val) return Number(val.integerValue);
+  if ('doubleValue' in val) return Number(val.doubleValue);
+  if ('arrayValue' in val) {
+    const values = val.arrayValue?.values;
+    return Array.isArray(values) ? values.map(parseFirestoreValue) : [];
+  }
+  if ('mapValue' in val) {
+    const fields = val.mapValue?.fields || {};
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(fields)) {
+      out[k] = parseFirestoreValue(v);
+    }
+    return out;
+  }
+  return undefined;
+}
+
+async function fetchVerifiedProductFromFirestore(productId: string): Promise<ServerProduct | null> {
+  if (!PRODUCT_ID_REGEX.test(productId)) return null;
+  const { projectId, firestoreDatabaseId } = loadFirebaseConfig();
+  if (!projectId) return null;
+
+  const dbId = encodeURIComponent(firestoreDatabaseId || '(default)');
+  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/${dbId}/documents/products/${encodeURIComponent(productId)}`;
+
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const docJson = (await resp.json()) as { fields?: Record<string, any> };
+    if (!docJson.fields) return null;
+
+    const parsed: Record<string, any> = {};
+    for (const [key, value] of Object.entries(docJson.fields)) {
+      parsed[key] = parseFirestoreValue(value);
+    }
+
+    if (parsed.isPublished !== true) return null;
+    const allowedCategories = ['Personal Growth', 'Mindset', 'Productivity', 'Fiction'];
+    const category = allowedCategories.includes(parsed.category)
+      ? (parsed.category as ServerProduct['category'])
+      : 'Personal Growth';
+    const priceBDT = Math.max(0, Math.min(100000, Number(parsed.priceBDT ?? 0) || 0));
+    const existing = database.products.get(productId);
+
+    const synced: ServerProduct = {
+      id: productId,
+      ownerId: String(parsed.ownerId || ''),
+      title: String(parsed.title || '').slice(0, 180),
+      slug: String(parsed.slug || productId).slice(0, 200),
+      subtitle: parsed.subtitle ? String(parsed.subtitle).slice(0, 240) : undefined,
+      description: String(parsed.description || parsed.shortDescription || '').slice(0, 5000),
+      author: String(parsed.author || '').slice(0, 120),
+      category,
+      coverImage: typeof parsed.coverImage === 'string' ? parsed.coverImage.slice(0, 250000) : '',
+      price: priceBDT,
+      priceBDT,
+      priceUSD: Number(parsed.priceUSD) || Math.max(0, Number((priceBDT / 115).toFixed(2))),
+      format: String(parsed.format || 'PDF & EPUB').slice(0, 60),
+      fileSize: String(parsed.fileSize || '1.2 MB').slice(0, 40),
+      pages: Math.max(1, Math.min(10000, Number(parsed.pages) || 24)),
+      language: String(parsed.language || 'English').slice(0, 60),
+      isbn: String(parsed.isbn || `AJP-${Date.now().toString().slice(-6)}`).slice(0, 64),
+      keyTakeaways: Array.isArray(parsed.keyTakeaways)
+        ? parsed.keyTakeaways.filter((t: unknown) => typeof t === 'string').slice(0, 10)
+        : [],
+      sampleChapters: Array.isArray(parsed.sampleChapters) ? parsed.sampleChapters.slice(0, 5) : [],
+      manuscriptContent: existing?.manuscriptContent,
+      hasUploadedPdf: Boolean(existing?.hasUploadedPdf || hasStoredPdf(productId)),
+      isPublished: true,
+      isFeatured: Boolean(parsed.isFeatured),
+      isNewRelease: Boolean(parsed.isNewRelease),
+      publishedYear: Number(parsed.publishedYear) || new Date().getFullYear(),
+      downloadFileKey: productId,
+      createdAt: String(parsed.createdAt || new Date().toISOString()),
+    };
+
+    if (!synced.ownerId || !synced.title || !synced.author) return null;
+    database.products.set(productId, synced);
+    return synced;
+  } catch {
+    return null;
+  }
+}
 
 function sanitizePdfText(input: string): string {
   return input
@@ -196,7 +479,6 @@ function buildEbookPdfBuffer(
   }
 
   const objects: string[] = [];
-  // 1: Catalog, 2: Pages, 3: Font
   objects.push('1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj');
 
   const pageObjIds: number[] = [];
@@ -254,7 +536,6 @@ function buildEbookPdfBuffer(
     `3 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj`
   );
 
-  // Reorder objects strictly by numeric object ID
   const sorted = objects
     .map((obj) => ({ id: parseInt(obj.split(' ', 1)[0], 10), body: obj }))
     .sort((a, b) => a.id - b.id);
@@ -292,10 +573,12 @@ app.get('/api/health', (req: Request, res: Response) => {
 });
 
 /* =========================================================================
-   2. Product Catalog & Author Publishing API
+   2. Product Catalog & Authenticated Author Publishing API
    ========================================================================= */
 app.get('/api/products', (req: Request, res: Response) => {
-  const published = Array.from(database.products.values()).filter((p) => p.isPublished);
+  const published = Array.from(database.products.values())
+    .filter((p) => p.isPublished)
+    .map(toPublicProduct);
   res.json({
     success: true,
     count: published.length,
@@ -308,22 +591,65 @@ app.get('/api/products/:id', (req: Request, res: Response) => {
   if (!product || !product.isPublished) {
     return res.status(404).json({ error: 'Publication not found or unpublished.' });
   }
-  res.json({ success: true, product });
+  res.json({ success: true, product: toPublicProduct(product) });
 });
 
-app.post('/api/products', (req: Request, res: Response) => {
+// Firestore-verified public catalog sync for checkout hydration (never trusts client prices)
+app.post('/api/products/catalog-sync', async (req: Request, res: Response) => {
+  const id = typeof req.body?.id === 'string' ? req.body.id.trim() : '';
+  if (!PRODUCT_ID_REGEX.test(id)) {
+    return res.status(400).json({ error: 'Valid publication ID is required.' });
+  }
+  const verifiedProduct = await fetchVerifiedProductFromFirestore(id);
+  if (!verifiedProduct) {
+    return res.status(404).json({ error: 'Published volume not found in verified Firestore catalogue.' });
+  }
+  return res.json({ success: true, product: toPublicProduct(verifiedProduct) });
+});
+
+app.post('/api/products', async (req: Request, res: Response) => {
   try {
+    const verifiedUser = await verifyFirebaseIdToken(req.headers.authorization);
+    if (!verifiedUser) {
+      return res.status(401).json({ error: 'Verified Firebase authentication required to publish or modify volumes.' });
+    }
+
     const body = req.body || {};
-    const id = typeof body.id === 'string' && /^[a-zA-Z0-9_-]{3,128}$/.test(body.id)
-      ? body.id
-      : `book_${crypto.randomBytes(6).toString('hex')}`;
-    const ownerId = typeof body.ownerId === 'string' ? body.ownerId.trim() : '';
+    const id =
+      typeof body.id === 'string' && PRODUCT_ID_REGEX.test(body.id)
+        ? body.id
+        : `book_${crypto.randomBytes(6).toString('hex')}`;
+    const ownerId = verifiedUser.uid;
     const title = typeof body.title === 'string' ? body.title.trim().slice(0, 180) : '';
     const author = typeof body.author === 'string' ? body.author.trim().slice(0, 120) : '';
     const description = typeof body.description === 'string' ? body.description.trim().slice(0, 5000) : '';
 
-    if (!ownerId || !title || !author || !description) {
-      return res.status(400).json({ error: 'ownerId, title, author, and description are required.' });
+    if (!title || !author || !description) {
+      return res.status(400).json({ error: 'title, author, and description are required.' });
+    }
+
+    const existingProduct = database.products.get(id);
+    if (existingProduct && existingProduct.ownerId !== ownerId) {
+      return res.status(403).json({ error: 'Only the publishing author may modify this publication.' });
+    }
+
+    // Validate & persist uploaded binary PDF into the private non-public disk vault
+    let uploadedPdfSaved = Boolean(existingProduct?.hasUploadedPdf || hasStoredPdf(id));
+    if (typeof body.uploadedPdfBase64 === 'string' && body.uploadedPdfBase64.trim().length > 0) {
+      const stripped = body.uploadedPdfBase64.replace(/^data:application\/pdf;base64,/i, '').trim();
+      const pdfBuffer = Buffer.from(stripped, 'base64');
+      if (pdfBuffer.byteLength === 0 || pdfBuffer.byteLength > MAX_PDF_UPLOAD_BYTES) {
+        return res.status(400).json({ error: 'Uploaded PDF exceeds 15 MB limit or is empty.' });
+      }
+      if (pdfBuffer.subarray(0, 5).toString('ascii') !== '%PDF-') {
+        return res.status(400).json({ error: 'Invalid PDF file signature (%PDF- header required).' });
+      }
+      const vaultPath = resolveVaultPdfPath(id);
+      if (!vaultPath) {
+        return res.status(400).json({ error: 'Invalid publication identifier for secure storage.' });
+      }
+      fs.writeFileSync(vaultPath, pdfBuffer);
+      uploadedPdfSaved = true;
     }
 
     const allowedCategories = ['Personal Growth', 'Mindset', 'Productivity', 'Fiction'];
@@ -332,9 +658,15 @@ app.post('/api/products', (req: Request, res: Response) => {
       : 'Personal Growth';
 
     const priceBDT = Math.max(0, Math.min(100000, Number(body.priceBDT ?? body.price ?? 0) || 0));
-    const slug = (typeof body.slug === 'string' && body.slug.trim())
-      ? body.slug.trim().slice(0, 200)
-      : title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || id;
+    const slug =
+      typeof body.slug === 'string' && body.slug.trim()
+        ? body.slug.trim().slice(0, 200)
+        : title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || id;
+
+    const incomingManuscript =
+      typeof body.manuscriptContent === 'string' && body.manuscriptContent.trim().length > 0
+        ? body.manuscriptContent.slice(0, 300000)
+        : existingProduct?.manuscriptContent;
 
     const product: ServerProduct = {
       id,
@@ -358,33 +690,147 @@ app.post('/api/products', (req: Request, res: Response) => {
         ? body.keyTakeaways.filter((t: unknown) => typeof t === 'string' && t.trim()).slice(0, 10)
         : [],
       sampleChapters: Array.isArray(body.sampleChapters) ? body.sampleChapters.slice(0, 5) : [],
-      manuscriptContent: typeof body.manuscriptContent === 'string' ? body.manuscriptContent.slice(0, 300000) : undefined,
+      manuscriptContent: incomingManuscript,
+      hasUploadedPdf: uploadedPdfSaved,
       isPublished: body.isPublished !== false,
       isNewRelease: Boolean(body.isNewRelease ?? true),
       isFeatured: Boolean(body.isFeatured ?? false),
       publishedYear: Number(body.publishedYear) || new Date().getFullYear(),
       downloadFileKey: id,
-      createdAt: typeof body.createdAt === 'string' ? body.createdAt : new Date().toISOString(),
+      createdAt:
+        existingProduct?.createdAt ||
+        (typeof body.createdAt === 'string' ? body.createdAt : new Date().toISOString()),
     };
 
     database.products.set(id, product);
-    return res.status(201).json({ success: true, product });
+    return res.status(201).json({ success: true, product: toPublicProduct(product) });
   } catch (err) {
     console.error('Publish sync error:', err);
     return res.status(500).json({ error: 'Failed to sync publication.' });
   }
 });
 
-app.delete('/api/products/:id', (req: Request, res: Response) => {
+app.get('/api/author/stats', async (req: Request, res: Response) => {
+  const verifiedUser = await verifyFirebaseIdToken(req.headers.authorization);
+  if (!verifiedUser) {
+    return res.status(401).json({ error: 'Authentication required to access author statistics.' });
+  }
+  const ownerId = verifiedUser.uid;
+
+  const ownedProducts = Array.from(database.products.values()).filter((p) => p.ownerId === ownerId);
+  const bookStatsMap = new Map<
+    string,
+    {
+      bookId: string;
+      title: string;
+      category: string;
+      priceBDT: number;
+      unitsSold: number;
+      revenueBDT: number;
+      downloadsCount: number;
+    }
+  >();
+
+  for (const p of ownedProducts) {
+    bookStatsMap.set(p.id, {
+      bookId: p.id,
+      title: p.title,
+      category: p.category,
+      priceBDT: p.priceBDT,
+      unitsSold: 0,
+      revenueBDT: 0,
+      downloadsCount: 0,
+    });
+  }
+
+  let totalUnitsSold = 0;
+  let totalRevenueBDT = 0;
+  let totalDownloads = 0;
+  const recentSales: Array<{
+    orderNumber: string;
+    bookId: string;
+    bookTitle: string;
+    buyerName: string;
+    quantity: number;
+    amountBDT: number;
+    createdAt: string;
+    paymentStatus: string;
+  }> = [];
+
+  for (const order of database.orders.values()) {
+    if (order.paymentStatus !== 'verified') continue;
+    for (const item of order.items) {
+      const stat = bookStatsMap.get(item.id);
+      if (!stat) continue;
+
+      const lineRevenueBDT =
+        order.currency === 'USD'
+          ? Math.round(item.price * 115 * item.quantity)
+          : Math.round(item.price * item.quantity);
+
+      stat.unitsSold += item.quantity;
+      stat.revenueBDT += lineRevenueBDT;
+      totalUnitsSold += item.quantity;
+      totalRevenueBDT += lineRevenueBDT;
+
+      const firstName = order.customerName.trim().split(/\s+/)[0] || 'Reader';
+      recentSales.push({
+        orderNumber: order.orderNumber,
+        bookId: item.id,
+        bookTitle: item.title,
+        buyerName: firstName,
+        quantity: item.quantity,
+        amountBDT: lineRevenueBDT,
+        createdAt: order.paidAt || order.createdAt,
+        paymentStatus: order.paymentStatus,
+      });
+    }
+  }
+
+  for (const dl of database.downloads.values()) {
+    const stat = bookStatsMap.get(dl.productId);
+    if (!stat) continue;
+    stat.downloadsCount += dl.downloadCount;
+    totalDownloads += dl.downloadCount;
+  }
+
+  recentSales.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  return res.json({
+    success: true,
+    summary: {
+      totalBooks: ownedProducts.length,
+      totalUnitsSold,
+      totalRevenueBDT,
+      totalDownloads,
+    },
+    perBookStats: Array.from(bookStatsMap.values()),
+    recentSales: recentSales.slice(0, 50),
+  });
+});
+
+app.delete('/api/products/:id', async (req: Request, res: Response) => {
+  const verifiedUser = await verifyFirebaseIdToken(req.headers.authorization);
+  if (!verifiedUser) {
+    return res.status(401).json({ error: 'Authentication required.' });
+  }
+
   const existing = database.products.get(req.params.id);
   if (!existing) {
     return res.status(404).json({ error: 'Publication not found.' });
   }
-  const requestOwnerId = (req.body?.ownerId || req.query.ownerId) as string | undefined;
-  if (!requestOwnerId || existing.ownerId !== requestOwnerId) {
+  if (existing.ownerId !== verifiedUser.uid) {
     return res.status(403).json({ error: 'Only the publishing author may delete this publication.' });
   }
+
   database.products.delete(req.params.id);
+  const vaultPath = resolveVaultPdfPath(req.params.id);
+  if (vaultPath && fs.existsSync(vaultPath)) {
+    try {
+      fs.unlinkSync(vaultPath);
+    } catch {}
+  }
+
   return res.json({ success: true });
 });
 
@@ -434,8 +880,9 @@ app.post('/api/coupons/validate', (req: Request, res: Response) => {
 /* =========================================================================
    4. Secure Order Creation (Server-Calculated Totals)
    ========================================================================= */
-app.post('/api/orders/create', (req: Request, res: Response) => {
+app.post('/api/orders/create', async (req: Request, res: Response) => {
   try {
+    const verifiedUser = await verifyFirebaseIdToken(req.headers.authorization);
     const {
       customerName,
       customerEmail,
@@ -443,7 +890,6 @@ app.post('/api/orders/create', (req: Request, res: Response) => {
       items,
       couponCode,
       currency = 'BDT',
-      userId,
     } = req.body;
 
     if (!customerEmail || !customerName) {
@@ -459,7 +905,12 @@ app.post('/api/orders/create', (req: Request, res: Response) => {
     const validatedItems: ServerOrder['items'] = [];
 
     for (const item of items) {
-      const product = database.products.get(item.id);
+      let product = database.products.get(item.id);
+      if (!product && typeof item.id === 'string') {
+        const fetched = await fetchVerifiedProductFromFirestore(item.id);
+        if (fetched) product = fetched;
+      }
+
       if (!product || !product.isPublished) {
         return res.status(400).json({
           error: `Publication "${item.title || item.id}" is not available in the verified catalogue.`,
@@ -500,10 +951,10 @@ app.post('/api/orders/create', (req: Request, res: Response) => {
     const newOrder: ServerOrder = {
       id: orderId,
       orderNumber,
-      userId: userId || undefined,
-      customerName: customerName.trim(),
-      customerEmail: customerEmail.trim().toLowerCase(),
-      customerPhone: customerPhone ? String(customerPhone).trim() : undefined,
+      userId: verifiedUser?.uid,
+      customerName: String(customerName).trim().slice(0, 120),
+      customerEmail: String(customerEmail).trim().toLowerCase().slice(0, 320),
+      customerPhone: customerPhone ? String(customerPhone).trim().slice(0, 40) : undefined,
       items: validatedItems,
       subtotal: calculatedSubtotal,
       discount: discountAmount,
@@ -552,6 +1003,7 @@ const fulfillOrderPayment = (order: ServerOrder) => {
       id: downloadId,
       orderId: order.id,
       orderNumber: order.orderNumber,
+      userId: order.userId,
       customerEmail: order.customerEmail,
       productId: item.id,
       productTitle: item.title,
@@ -612,6 +1064,14 @@ app.get('/api/downloads/:token', (req: Request, res: Response) => {
   const safeFilename = `${entitlement.productTitle.replace(/[^a-zA-Z0-9_-]/g, '_')}_Al_Jabin_Publications.pdf`;
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
+  res.setHeader('Cache-Control', 'no-store, private');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  // Stream uploaded original PDF from private vault if present
+  const vaultPath = resolveVaultPdfPath(entitlement.productId);
+  if (vaultPath && fs.existsSync(vaultPath)) {
+    return res.sendFile(vaultPath);
+  }
 
   const pdfBuffer = buildEbookPdfBuffer(
     entitlement.productTitle,
@@ -624,14 +1084,18 @@ app.get('/api/downloads/:token', (req: Request, res: Response) => {
   return res.send(pdfBuffer);
 });
 
-app.get('/api/user/library', (req: Request, res: Response) => {
-  const email = (req.query.email as string)?.trim().toLowerCase();
-  if (!email) {
-    return res.status(400).json({ error: 'Customer email required.' });
+app.get('/api/user/library', async (req: Request, res: Response) => {
+  const verifiedUser = await verifyFirebaseIdToken(req.headers.authorization);
+  if (!verifiedUser) {
+    return res.status(401).json({ error: 'Authentication required to access your personal library.' });
   }
 
   const userEntitlements = Array.from(database.downloads.values())
-    .filter((d) => d.customerEmail === email)
+    .filter(
+      (d) =>
+        (d.userId && d.userId === verifiedUser.uid) ||
+        (verifiedUser.email && d.customerEmail === verifiedUser.email)
+    )
     .map((d) => ({
       downloadId: d.id,
       productId: d.productId,
@@ -651,7 +1115,7 @@ app.get('/api/user/library', (req: Request, res: Response) => {
   });
 });
 
-app.get('/api/orders/:id', (req: Request, res: Response) => {
+app.get('/api/orders/:id', async (req: Request, res: Response) => {
   const idOrNum = req.params.id;
   const order =
     database.orders.get(idOrNum) ||
@@ -661,9 +1125,17 @@ app.get('/api/orders/:id', (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Order not found.' });
   }
 
+  const verifiedUser = await verifyFirebaseIdToken(req.headers.authorization);
+  const isOwner = Boolean(
+    verifiedUser &&
+      ((order.userId && order.userId === verifiedUser.uid) ||
+        (verifiedUser.email && order.customerEmail === verifiedUser.email))
+  );
+
   const downloads = Array.from(database.downloads.values())
     .filter((d) => d.orderId === order.id)
     .map((d) => ({
+      productId: d.productId,
       productTitle: d.productTitle,
       downloadUrl: `/api/downloads/${d.tokenHash}`,
       expiresAt: d.expiresAt,
@@ -677,7 +1149,7 @@ app.get('/api/orders/:id', (req: Request, res: Response) => {
       id: order.id,
       orderNumber: order.orderNumber,
       customerName: order.customerName,
-      customerEmail: order.customerEmail,
+      customerEmail: isOwner ? order.customerEmail : maskEmail(order.customerEmail),
       items: order.items,
       subtotal: order.subtotal,
       discount: order.discount,

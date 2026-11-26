@@ -11,15 +11,19 @@ export const AboutSection: React.FC = () => {
           
           {/* Left: Editorial Mission */}
           <div className="lg:col-span-7 space-y-5">
-            <div className="text-[11px] uppercase tracking-[0.2em] text-[#686B78] font-semibold">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-[#D97706] font-bold">
               Our Publishing Mission
             </div>
 
             <h2
-              className="font-editorial text-2xl sm:text-3xl lg:text-[36px] text-[#171923] font-normal leading-[1.24]"
+              className="font-editorial text-2xl sm:text-3xl lg:text-[40px] text-[#171923] font-semibold leading-[1.18] tracking-[-0.02em]"
               style={{ textWrap: 'balance' }}
             >
-              “Al Jabin Publications brings together thoughtful books and practical ideas for readers who want to learn, grow, and see the world differently.”
+              “Al Jabin Publications brings together{' '}
+              <span className="italic font-bold text-[#171D50]">
+                thoughtful books and practical ideas
+              </span>{' '}
+              for readers who want to learn, grow, and see the world differently.”
             </h2>
 
             <p className="text-sm sm:text-base text-[#575A66] font-normal leading-relaxed max-w-2xl">
@@ -46,10 +50,10 @@ export const AboutSection: React.FC = () => {
           <div className="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-6 lg:pl-8 lg:border-l lg:border-black/[0.08]">
             
             <div className="space-y-2 pb-6 sm:pb-0 lg:pb-6 sm:border-r lg:border-r-0 lg:border-b border-black/[0.08] sm:pr-6 lg:pr-0">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-[#686B78] font-semibold">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[#D97706] font-bold">
                 Ownership Model · Permanent
               </div>
-              <div className="text-2xl sm:text-3xl font-bold tracking-[-0.03em] text-[#171923] tabular-nums">
+              <div className="font-display text-3xl sm:text-4xl font-extrabold tracking-[-0.04em] text-[#171923] tabular-nums">
                 100% DRM-Free
               </div>
               <p className="text-xs sm:text-sm text-[#575A66] leading-relaxed">
@@ -58,10 +62,10 @@ export const AboutSection: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-[#686B78] font-semibold">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[#D97706] font-bold">
                 Global Distribution
               </div>
-              <div className="text-2xl sm:text-3xl font-bold tracking-[-0.03em] text-[#171923]">
+              <div className="font-display text-3xl sm:text-4xl font-extrabold tracking-[-0.04em] text-[#171923]">
                 Bangladesh & Worldwide
               </div>
               <p className="text-xs sm:text-sm text-[#575A66] leading-relaxed">
@@ -91,10 +95,10 @@ export const AboutSection: React.FC = () => {
                 className="w-full max-w-[240px] h-full object-contain group-hover:scale-[1.03] transition-transform duration-300 select-none"
               />
             </div>
-            <div className="text-[11px] font-semibold text-[#686B78] uppercase tracking-[0.16em] tabular-nums mb-1.5">
+            <div className="text-[11px] font-bold text-[#D97706] uppercase tracking-[0.18em] tabular-nums mb-1.5">
               01 · Editorial Rigor
             </div>
-            <h3 className="text-xl font-bold tracking-[-0.02em] text-[#171923]">
+            <h3 className="text-xl sm:text-2xl font-extrabold tracking-[-0.03em] text-[#171923]">
               Signal Over Noise
             </h3>
             <p className="text-sm text-[#575A66] leading-relaxed mt-2">
@@ -111,10 +115,10 @@ export const AboutSection: React.FC = () => {
                 className="w-full max-w-[240px] h-full object-contain group-hover:scale-[1.03] transition-transform duration-300 select-none"
               />
             </div>
-            <div className="text-[11px] font-semibold text-[#686B78] uppercase tracking-[0.16em] tabular-nums mb-1.5">
+            <div className="text-[11px] font-bold text-[#D97706] uppercase tracking-[0.18em] tabular-nums mb-1.5">
               02 · Tactile Craft
             </div>
-            <h3 className="text-xl font-bold tracking-[-0.02em] text-[#171923]">
+            <h3 className="text-xl sm:text-2xl font-extrabold tracking-[-0.03em] text-[#171923]">
               Curated Bookshop Experience
             </h3>
             <p className="text-sm text-[#575A66] leading-relaxed mt-2">
@@ -131,10 +135,10 @@ export const AboutSection: React.FC = () => {
                 className="w-full max-w-[240px] h-full object-contain group-hover:scale-[1.03] transition-transform duration-300 select-none"
               />
             </div>
-            <div className="text-[11px] font-semibold text-[#686B78] uppercase tracking-[0.16em] tabular-nums mb-1.5">
+            <div className="text-[11px] font-bold text-[#D97706] uppercase tracking-[0.18em] tabular-nums mb-1.5">
               03 · Instant Delivery
             </div>
-            <h3 className="text-xl font-bold tracking-[-0.02em] text-[#171923]">
+            <h3 className="text-xl sm:text-2xl font-extrabold tracking-[-0.03em] text-[#171923]">
               Private Reader Library
             </h3>
             <p className="text-sm text-[#575A66] leading-relaxed mt-2">

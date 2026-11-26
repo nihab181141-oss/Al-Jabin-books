@@ -271,27 +271,35 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({
                 {/* Purchased items list */}
                 <div className="space-y-2 pt-2 border-t border-[#E8E2D8]">
                   <div className="text-xs font-medium text-[#171923]">Purchased Publications:</div>
-                  {searchedOrder.items.map((item, idx) => (
-                    <div key={idx} className="p-3 bg-white rounded-xl border border-[#E8E9F0] flex items-center justify-between gap-3 text-xs">
-                      <div>
-                        <div className="font-medium text-[#171923]">{item.title}</div>
-                        <div className="text-[11px] text-[#686B78] font-light">Quantity: {item.quantity} · DRM-Free PDF/EPUB</div>
-                      </div>
+                  {searchedOrder.items.map((item, idx) => {
+                    const dlToken =
+                      searchedOrder.downloads?.find(
+                        (d) => d.productId === item.bookId || d.productTitle === item.title
+                      ) || searchedOrder.downloads?.[idx];
+                    return (
+                      <div key={idx} className="p-3 bg-white rounded-xl border border-[#E8E9F0] flex items-center justify-between gap-3 text-xs">
+                        <div>
+                          <div className="font-medium text-[#171923]">{item.title}</div>
+                          <div className="text-[11px] text-[#686B78] font-light">Quantity: {item.quantity} · DRM-Free PDF/EPUB</div>
+                        </div>
 
-                      {searchedOrder.paymentStatus === 'verified' ? (
-                        <a
-                          href={`/api/downloads/${searchedOrder.downloadAccessCode || 'specimen'}`}
-                          download
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#171D50] text-white text-[11px] font-medium rounded-full hover:bg-[#0f1338] transition-colors"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Download</span>
-                        </a>
-                      ) : (
-                        <span className="text-[11px] text-amber-700">Awaiting Verification</span>
-                      )}
-                    </div>
-                  ))}
+                        {searchedOrder.paymentStatus === 'verified' && dlToken?.downloadUrl ? (
+                          <a
+                            href={dlToken.downloadUrl}
+                            download
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#171D50] text-white text-[11px] font-medium rounded-full hover:bg-[#0f1338] transition-colors"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Download</span>
+                          </a>
+                        ) : (
+                          <span className="text-[11px] text-amber-700">
+                            {searchedOrder.paymentStatus === 'verified' ? 'Check Library Tab' : 'Awaiting Verification'}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

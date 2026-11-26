@@ -15,19 +15,22 @@ import { OrderLookupModal } from './components/orders/OrderLookupModal';
 import { ReadingStudioModal } from './components/home/ReadingStudioModal';
 import { AuthPage } from './components/auth/AuthPage';
 import { PublishBookPage } from './components/publish/PublishBookPage';
+import { AuthorDashboard } from './components/dashboard/AuthorDashboard';
 import { Toast } from './components/ui/Toast';
 
-type AppView = 'store' | 'auth' | 'publish';
+type AppView = 'store' | 'auth' | 'publish' | 'dashboard';
 
 function getInitialView(): AppView {
   if (typeof window === 'undefined') return 'store';
   if (window.location.hash === '#auth' || window.location.pathname === '/auth') return 'auth';
   if (window.location.hash === '#publish' || window.location.pathname === '/publish') return 'publish';
+  if (window.location.hash === '#dashboard' || window.location.pathname === '/dashboard') return 'dashboard';
   return 'store';
 }
 
 export default function App() {
   const [activeView, setActiveView] = useState<AppView>(getInitialView);
+  const [authInitialMode, setAuthInitialMode] = useState<'signin' | 'signup'>('signup');
   const [authRedirectReason, setAuthRedirectReason] = useState<string | null>(null);
   const [isOrderLookupOpen, setIsOrderLookupOpen] = useState(false);
   const [isReadingStudioOpen, setIsReadingStudioOpen] = useState(false);
@@ -52,14 +55,20 @@ export default function App() {
     }
   };
 
+  const navigateToAuth = (mode: 'signin' | 'signup' = 'signup', reason?: string) => {
+    setAuthInitialMode(mode);
+    navigateTo('auth', reason);
+  };
+
   return (
     <StoreProvider>
       <div className="min-h-screen bg-[#F5F4EF] text-[#171923] flex flex-col font-sans selection:bg-[#171D50] selection:text-white">
         <Header
           activeView={activeView}
           onNavigateStore={() => navigateTo('store')}
-          onOpenAuth={(reason) => navigateTo('auth', reason)}
+          onOpenAuth={(mode, reason) => navigateToAuth(mode || 'signin', reason)}
           onOpenPublish={() => navigateTo('publish')}
+          onOpenDashboard={() => navigateTo('dashboard')}
           onOpenOrderLookup={() => setIsOrderLookupOpen(true)}
         />
 
@@ -68,19 +77,27 @@ export default function App() {
             <AuthPage
               onBackToStore={() => navigateTo('store')}
               onOpenPublish={() => navigateTo('publish')}
+              onOpenDashboard={() => navigateTo('dashboard')}
+              initialMode={authInitialMode}
               redirectReason={authRedirectReason}
             />
           ) : activeView === 'publish' ? (
             <PublishBookPage
               onBackToStore={() => navigateTo('store')}
-              onOpenAuth={(reason) => navigateTo('auth', reason)}
+              onOpenAuth={(reason) => navigateToAuth('signup', reason)}
+            />
+          ) : activeView === 'dashboard' ? (
+            <AuthorDashboard
+              onBackToStore={() => navigateTo('store')}
+              onOpenPublish={() => navigateTo('publish')}
+              onOpenAuth={(mode, reason) => navigateToAuth(mode || 'signin', reason)}
             />
           ) : (
             <>
               <Hero
                 onOpenReadingStudio={() => setIsReadingStudioOpen(true)}
                 onOpenOrderLookup={() => setIsOrderLookupOpen(true)}
-                onOpenAuth={() => navigateTo('auth')}
+                onOpenAuth={() => navigateToAuth('signup')}
                 onOpenPublish={() => navigateTo('publish')}
               />
 
@@ -99,7 +116,7 @@ export default function App() {
         <Footer
           onNavigateStore={() => navigateTo('store')}
           onOpenOrderLookup={() => setIsOrderLookupOpen(true)}
-          onOpenAuth={() => navigateTo('auth')}
+          onOpenAuth={() => navigateToAuth('signin')}
           onOpenPublish={() => navigateTo('publish')}
         />
 
@@ -114,7 +131,7 @@ export default function App() {
           onClose={() => setIsOrderLookupOpen(false)}
           onOpenAuth={() => {
             setIsOrderLookupOpen(false);
-            navigateTo('auth');
+            navigateToAuth('signin');
           }}
           onOpenPublish={() => {
             setIsOrderLookupOpen(false);

@@ -36,6 +36,7 @@ export interface Book {
   keyTakeaways: string[];
   sampleChapters: SampleChapter[];
   manuscriptContent?: string;
+  hasUploadedPdf?: boolean;
   downloadFileKey: string;
   createdAt?: string;
 }
@@ -55,6 +56,8 @@ export interface PublishBookInput {
   sampleChapterTitle?: string;
   sampleExcerpt?: string;
   manuscriptContent?: string;
+  uploadedPdfBase64?: string;
+  uploadedFileName?: string;
   coverImage?: string;
 }
 
@@ -137,3 +140,38 @@ export interface CustomerProfile extends OptionalProfileFields {
   createdAt: string;
   updatedAt?: string;
 }
+
+export interface AuthorSalesSummary {
+  totalBooks: number;
+  totalUnitsSold: number;
+  totalRevenueBDT: number;
+  totalDownloads: number;
+}
+
+export interface AuthorBookStat {
+  bookId: string;
+  title: string;
+  category: string;
+  priceBDT: number;
+  unitsSold: number;
+  revenueBDT: number;
+  downloadsCount: number;
+}
+
+export interface AuthorRecentSale {
+  orderNumber: string;
+  bookId: string;
+  bookTitle: string;
+  buyerName: string;
+  quantity: number;
+  amountBDT: number;
+  createdAt: string;
+  paymentStatus: string;
+}
+
+export interface AuthorSalesData {
+  summary: AuthorSalesSummary;
+  perBookStats: AuthorBookStat[];
+  recentSales: AuthorRecentSale[];
+}
+

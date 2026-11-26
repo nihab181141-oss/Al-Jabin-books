@@ -57,11 +57,12 @@ export const BookCatalogue: React.FC<BookCatalogueProps> = ({
         {/* Section Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8 sm:mb-10">
           <div className="space-y-2 max-w-xl">
-            <div className="text-[11px] uppercase tracking-[0.2em] text-[#686B78] font-semibold">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-[#D97706] font-bold">
               The Digital Publishing Shelf
             </div>
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-[-0.03em] text-[#171923]">
-              Editorial Catalogue
+            <h2 className="text-3xl sm:text-5xl font-extrabold tracking-[-0.035em] leading-[1.06] text-[#171923]">
+              Editorial{' '}
+              <span className="font-editorial italic font-bold text-[#171D50]">Catalogue</span>
             </h2>
           </div>
           <p className="text-xs sm:text-sm text-[#575A66] font-normal max-w-md leading-relaxed">
@@ -159,13 +160,14 @@ export const BookCatalogue: React.FC<BookCatalogueProps> = ({
               />
             </div>
             <div className="md:col-span-6 text-center md:text-left space-y-4">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-[#686B78] font-semibold">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-[#D97706] font-bold">
                 Curated Release Queue
               </div>
-              <h3 className="text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-[#171923]">
-                Catalogue Curation in Progress
+              <h3 className="text-2xl sm:text-4xl font-extrabold tracking-[-0.035em] leading-[1.1] text-[#171923]">
+                Catalogue Curation{' '}
+                <span className="font-editorial italic font-bold text-[#171D50]">in Progress</span>
               </h3>
-              <p className="text-sm text-[#575A66] font-normal leading-relaxed max-w-lg mx-auto md:mx-0">
+              <p className="text-sm sm:text-base text-[#575A66] font-normal leading-relaxed max-w-lg mx-auto md:mx-0">
                 Our inaugural publications are undergoing final editorial typesetting. Experience our digital reading architecture live in the Reading Studio while titles prepare for release.
               </p>
               <div className="pt-2 flex flex-wrap items-center justify-center md:justify-start gap-3">

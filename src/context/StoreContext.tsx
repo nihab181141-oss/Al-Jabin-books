@@ -10,6 +10,7 @@ import {
   CustomerProfile,
   OptionalProfileFields,
   PublishBookInput,
+  AuthorSalesData,
 } from '../types';
 import {
   auth,
@@ -61,7 +62,18 @@ interface StoreContextType {
   previewSampleBook: Book | null;
   setPreviewSampleBook: (book: Book | null) => void;
   publishBook: (input: PublishBookInput) => Promise<PublishResult>;
+  updatePublishedBook: (
+    bookId: string,
+    updates: {
+      title?: string;
+      subtitle?: string;
+      price?: number;
+      category?: 'Personal Growth' | 'Mindset' | 'Productivity' | 'Fiction';
+      description?: string;
+    }
+  ) => Promise<void>;
   deletePublishedBook: (bookId: string) => Promise<void>;
+  fetchAuthorSalesStats: () => Promise<AuthorSalesData>;
 
   // Cart
   cart: CartItem[];
@@ -280,37 +292,62 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
   }, [subscribers]);
 
-  // Sync a single book into Express server memory so checkout & PDF download always work
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    if (!auth.currentUser) return {};
+    try {
+      const token = await auth.currentUser.getIdToken();
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    } catch {
+      return {};
+    }
+  };
+
+  // Sync a single book into Express server memory using verified author token or Firestore REST check
   const syncBookToServer = async (book: Book) => {
     try {
-      await fetch('/api/products', {
+      if (auth.currentUser && book.ownerId === auth.currentUser.uid) {
+        const authHeaders = await getAuthHeaders();
+        if (authHeaders.Authorization) {
+          await fetch('/api/products', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...authHeaders,
+            },
+            body: JSON.stringify({
+              id: book.id,
+              title: book.title,
+              subtitle: book.subtitle,
+              description: book.description,
+              author: book.author,
+              category: book.category,
+              coverImage: book.coverImage,
+              priceBDT: book.price,
+              priceUSD: book.priceUSD,
+              format: book.format,
+              fileSize: book.fileSize,
+              pages: book.pages,
+              language: book.language,
+              isbn: book.isbn,
+              keyTakeaways: book.keyTakeaways,
+              sampleChapters: book.sampleChapters,
+              manuscriptContent: book.manuscriptContent,
+              isPublished: true,
+              isFeatured: book.isFeatured,
+              isNewRelease: book.isNewRelease,
+              publishedYear: book.publishedYear,
+              createdAt: book.createdAt,
+            }),
+          });
+          return;
+        }
+      }
+
+      // Public/unauthenticated catalog hydration: server verifies fields directly from Firestore
+      await fetch('/api/products/catalog-sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: book.id,
-          ownerId: book.ownerId || 'aljabin_author',
-          title: book.title,
-          subtitle: book.subtitle,
-          description: book.description,
-          author: book.author,
-          category: book.category,
-          coverImage: book.coverImage,
-          priceBDT: book.price,
-          priceUSD: book.priceUSD,
-          format: book.format,
-          fileSize: book.fileSize,
-          pages: book.pages,
-          language: book.language,
-          isbn: book.isbn,
-          keyTakeaways: book.keyTakeaways,
-          sampleChapters: book.sampleChapters,
-          manuscriptContent: book.manuscriptContent,
-          isPublished: true,
-          isFeatured: book.isFeatured,
-          isNewRelease: book.isNewRelease,
-          publishedYear: book.publishedYear,
-          createdAt: book.createdAt,
-        }),
+        body: JSON.stringify({ id: book.id }),
       });
     } catch {
       // Non-fatal background sync
@@ -358,7 +395,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             description: String(d.description || d.shortDescription || ''),
             keyTakeaways: Array.isArray(d.keyTakeaways) ? d.keyTakeaways : [],
             sampleChapters: Array.isArray(d.sampleChapters) ? d.sampleChapters : [],
-            manuscriptContent: d.manuscriptContent ? String(d.manuscriptContent) : undefined,
             downloadFileKey: String(d.originalFileStoragePath || docSnap.id),
             createdAt: d.createdAt ? String(d.createdAt) : undefined,
           };
@@ -455,7 +491,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
           );
         }
-        loadUserLibrary(user.email);
+        loadUserLibrary();
       } else {
         setUserProfile(null);
         setUserLibrary([]);
@@ -466,9 +502,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => unsubscribe();
   }, []);
 
-  const loadUserLibrary = async (email: string) => {
+  const loadUserLibrary = async () => {
+    if (!auth.currentUser) return;
     try {
-      const res = await fetch(`/api/user/library?email=${encodeURIComponent(email)}`);
+      const authHeaders = await getAuthHeaders();
+      if (!authHeaders.Authorization) return;
+      const res = await fetch('/api/user/library', { headers: authHeaders });
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
@@ -482,7 +521,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const refreshUserLibrary = async () => {
     if (currentUser?.email) {
-      await loadUserLibrary(currentUser.email);
+      await loadUserLibrary();
     }
   };
 
@@ -496,7 +535,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       window.history.replaceState({}, '', window.location.pathname);
       clearCart();
 
-      fetch(`/api/orders/${orderId}`)
+      getAuthHeaders()
+        .then((headers) => fetch(`/api/orders/${encodeURIComponent(orderId)}`, { headers }))
         .then((res) => res.json())
         .then((data) => {
           if (data.success && data.order) {
@@ -567,7 +607,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const pages = Math.max(1, Math.min(10000, Math.round(Number(input.pages) || 24)));
     const isbn = (input.isbn || `AJP-${Date.now().toString().slice(-6)}`).trim().slice(0, 64);
     const manuscriptContent = input.manuscriptContent ? input.manuscriptContent.trim().slice(0, 300000) : '';
-    const approxKB = Math.max(240, Math.round((manuscriptContent.length + coverImage.length) / 1024));
+    const approxKB = input.uploadedPdfBase64
+      ? Math.max(240, Math.round((input.uploadedPdfBase64.length * 0.75) / 1024))
+      : Math.max(240, Math.round((manuscriptContent.length + coverImage.length) / 1024));
     const fileSize = approxKB > 1024 ? `${(approxKB / 1024).toFixed(1)} MB` : `${approxKB} KB`;
 
     const newBook: Book = {
@@ -591,17 +633,24 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       description: cleanDesc,
       keyTakeaways,
       sampleChapters,
-      ...(manuscriptContent ? { manuscriptContent } : {}),
+      hasUploadedPdf: Boolean(input.uploadedPdfBase64),
       downloadFileKey: bookId,
       createdAt: now,
     };
 
-    // 1. Sync immediately with server runtime so checkout and PDF download work instantly
+    const authHeaders = await getAuthHeaders();
+
+    // 1. Sync immediately with server runtime (vault stores private PDF & manuscript privately)
     const serverRes = await fetch('/api/products', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
       body: JSON.stringify({
         ...newBook,
+        ...(manuscriptContent ? { manuscriptContent } : {}),
+        ...(input.uploadedPdfBase64 ? { uploadedPdfBase64: input.uploadedPdfBase64 } : {}),
         priceBDT,
         slug,
         shortDescription: cleanDesc.slice(0, 300),
@@ -614,7 +663,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       throw new Error(errData.error || 'Failed to register ebook with publishing server.');
     }
 
-    // 2. Persist to Firestore under strict allowlisted blueprint schema
+    // 2. Persist public metadata ONLY to /products/{bookId} (NO manuscriptContent!)
     const firestorePayload: Record<string, any> = {
       ownerId: currentUser.uid,
       title: newBook.title,
@@ -642,25 +691,37 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updatedAt: now,
     };
     if (newBook.subtitle) firestorePayload.subtitle = newBook.subtitle;
-    if (manuscriptContent) firestorePayload.manuscriptContent = manuscriptContent;
 
     let firestoreSynced = true;
     try {
       try {
         await setDoc(doc(db, 'products', bookId), firestorePayload);
+        // Persist private manuscript text in owner-only subcollection
+        if (manuscriptContent || input.uploadedFileName || input.uploadedPdfBase64) {
+          const privatePayload: Record<string, any> = {
+            ownerId: currentUser.uid,
+            hasUploadedPdf: Boolean(input.uploadedPdfBase64),
+            updatedAt: now,
+          };
+          if (manuscriptContent) privatePayload.manuscriptContent = manuscriptContent;
+          if (input.uploadedFileName) {
+            privatePayload.originalFileName = input.uploadedFileName.trim().slice(0, 180);
+          }
+          await setDoc(doc(db, 'products', bookId, 'private', 'manuscript'), privatePayload);
+        }
       } catch (err) {
         handleFirestoreError(err, OperationType.CREATE, `products/${bookId}`);
       }
     } catch (structuredErr: any) {
       firestoreSynced = false;
-      console.warn('Firestore product sync pending rule deployment:', structuredErr?.message);
+      console.warn('Firestore product sync notice:', structuredErr?.message);
     }
 
     setBooks((prev) => [newBook, ...prev]);
     showToast(
       firestoreSynced
         ? `"${newBook.title}" is now published live!`
-        : `"${newBook.title}" published locally (deploy firestore.rules for cloud sync).`
+        : `"${newBook.title}" published locally (check Firestore configuration).`
     );
 
     return { book: newBook, firestoreSynced };
@@ -671,13 +732,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       throw new Error('Authentication required.');
     }
 
+    const authHeaders = await getAuthHeaders();
     await fetch(`/api/products/${encodeURIComponent(bookId)}`, {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ownerId: currentUser.uid }),
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
     }).catch(() => {});
 
     try {
+      // Delete private subcollection document first while parent product doc exists for Master Gate rule check
+      await deleteDoc(doc(db, 'products', bookId, 'private', 'manuscript')).catch(() => {});
       try {
         await deleteDoc(doc(db, 'products', bookId));
       } catch (err) {
@@ -690,6 +756,105 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setBooks((prev) => prev.filter((b) => b.id !== bookId));
     setCart((prev) => prev.filter((c) => c.book.id !== bookId));
     showToast('Publication removed from the catalogue.');
+  };
+
+  const updatePublishedBook = async (
+    bookId: string,
+    updates: {
+      title?: string;
+      subtitle?: string;
+      price?: number;
+      category?: 'Personal Growth' | 'Mindset' | 'Productivity' | 'Fiction';
+      description?: string;
+    }
+  ) => {
+    if (!currentUser) {
+      throw new Error('Authentication required.');
+    }
+    const existing = books.find((b) => b.id === bookId && b.ownerId === currentUser.uid);
+    if (!existing) {
+      throw new Error('Publication not found under your author account.');
+    }
+
+    const nextTitle = updates.title?.trim().slice(0, 180) || existing.title;
+    const nextSubtitle =
+      updates.subtitle !== undefined ? updates.subtitle.trim().slice(0, 240) : existing.subtitle;
+    const nextPrice =
+      updates.price !== undefined
+        ? Math.max(0, Math.min(100000, Math.round(Number(updates.price) || 0)))
+        : existing.price;
+    const nextPriceUSD = Number((nextPrice / 115).toFixed(2));
+    const nextCategory = updates.category || existing.category;
+    const nextDesc = updates.description?.trim().slice(0, 5000) || existing.description;
+    const updatedBook: Book = {
+      ...existing,
+      title: nextTitle,
+      ...(nextSubtitle ? { subtitle: nextSubtitle } : { subtitle: undefined }),
+      price: nextPrice,
+      priceUSD: nextPriceUSD,
+      category: nextCategory,
+      description: nextDesc,
+    };
+
+    await syncBookToServer(updatedBook);
+
+    try {
+      const productRef = doc(db, 'products', bookId);
+      const updatePayload: Record<string, any> = {
+        title: nextTitle,
+        priceBDT: nextPrice,
+        priceUSD: nextPriceUSD,
+        category: nextCategory,
+        description: nextDesc,
+        shortDescription: nextDesc.slice(0, 580),
+        updatedAt: new Date().toISOString(),
+      };
+      if (nextSubtitle) {
+        updatePayload.subtitle = nextSubtitle;
+      }
+      try {
+        await updateDoc(productRef, updatePayload);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `products/${bookId}`);
+      }
+    } catch (structuredErr) {
+      console.warn('Firestore product update notice:', structuredErr);
+    }
+
+    setBooks((prev) => prev.map((b) => (b.id === bookId ? updatedBook : b)));
+    showToast(`Updated "${nextTitle}".`);
+  };
+
+  const fetchAuthorSalesStats = async (): Promise<AuthorSalesData> => {
+    if (!currentUser) {
+      return {
+        summary: { totalBooks: 0, totalUnitsSold: 0, totalRevenueBDT: 0, totalDownloads: 0 },
+        perBookStats: [],
+        recentSales: [],
+      };
+    }
+
+    const authored = books.filter((b) => b.ownerId === currentUser.uid);
+    if (authored.length > 0) {
+      await Promise.all(authored.map((b) => syncBookToServer(b)));
+    }
+
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch('/api/author/stats', { headers: authHeaders });
+    if (!res.ok) {
+      throw new Error('Unable to load author sales statistics.');
+    }
+    const data = await res.json();
+    return {
+      summary: data.summary || {
+        totalBooks: authored.length,
+        totalUnitsSold: 0,
+        totalRevenueBDT: 0,
+        totalDownloads: 0,
+      },
+      perBookStats: Array.isArray(data.perBookStats) ? data.perBookStats : [],
+      recentSales: Array.isArray(data.recentSales) ? data.recentSales : [],
+    };
   };
 
   // Cart calculations
@@ -772,12 +937,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     paymentMethod: PaymentMethod;
     transactionId?: string;
   }): Promise<{ order: Order }> => {
-    // Ensure all cart books are synced in Express memory before checkout validation
     await Promise.all(cart.map((c) => syncBookToServer(c.book)));
+    const authHeaders = await getAuthHeaders();
 
     const response = await fetch('/api/orders/create', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
       body: JSON.stringify({
         customerName,
         customerEmail,
@@ -785,12 +953,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         items: cart.map((c) => ({
           id: c.book.id,
           title: c.book.title,
-          price: c.book.price,
           quantity: c.quantity,
         })),
         couponCode: activeCoupon?.code,
         currency: 'BDT',
-        userId: currentUser?.uid,
       }),
     });
 
@@ -831,7 +997,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId: newOrder.id }),
       });
-      const detailRes = await fetch(`/api/orders/${newOrder.id}`);
+      const detailRes = await fetch(`/api/orders/${encodeURIComponent(newOrder.id)}`, {
+        headers: authHeaders,
+      });
       if (detailRes.ok) {
         const detailJson = await detailRes.json();
         if (detailJson.success && detailJson.order?.downloads) {
@@ -854,7 +1022,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const lookupOrder = async (orderId: string): Promise<Order | undefined> => {
     try {
-      const res = await fetch(`/api/orders/${encodeURIComponent(orderId.trim())}`);
+      const authHeaders = await getAuthHeaders();
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId.trim())}`, {
+        headers: authHeaders,
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.order) {
@@ -1017,7 +1188,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         previewSampleBook,
         setPreviewSampleBook,
         publishBook,
+        updatePublishedBook,
         deletePublishedBook,
+        fetchAuthorSalesStats,
         cart,
         addToCart,
         removeFromCart,

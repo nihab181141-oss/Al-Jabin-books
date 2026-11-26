@@ -60,13 +60,13 @@ export const BookCard: React.FC<BookCardProps> = ({ book }) => {
 
           <h3
             onClick={() => setSelectedBook(book)}
-            className="font-editorial text-lg text-[#171923] group-hover:text-[#171D50] transition-colors leading-snug cursor-pointer font-medium line-clamp-1"
+            className="font-editorial text-xl text-[#171923] group-hover:text-[#171D50] transition-colors leading-snug cursor-pointer font-bold tracking-[-0.015em] line-clamp-1"
             title={book.title}
           >
             {book.title}
           </h3>
 
-          <p className="text-xs text-[#686B78] font-light">
+          <p className="text-xs text-[#575A66] font-medium">
             {book.author}
           </p>
         </div>
@@ -74,7 +74,7 @@ export const BookCard: React.FC<BookCardProps> = ({ book }) => {
         {/* Pricing & Action Buttons */}
         <div className="pt-3 border-t border-[#F0F1F5] flex items-center justify-between gap-2">
           <div className="flex items-baseline gap-2 tabular-nums">
-            <span className="text-base font-semibold text-[#171D50]">
+            <span className="text-lg font-extrabold tracking-tight text-[#171D50]">
               {book.price === 0 ? 'Free' : `৳${book.price}`}
             </span>
             {book.originalPrice && (

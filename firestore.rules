@@ -7,7 +7,7 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Helper functions
+    // Helper primitives
     function isSignedIn() {
       return request.auth != null;
     }
@@ -28,6 +28,7 @@ service cloud.firestore {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    // Validation Blueprint: User Profile (PII isolated to owner)
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email', 'role', 'createdAt']) &&
         data.keys().hasOnly([
@@ -56,6 +57,7 @@ service cloud.firestore {
         (!data.keys().hasAny(['updatedAt']) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
 
+    // Validation Blueprint: Public Storefront Product (manuscriptContent excluded from public doc)
     function isValidProduct(data) {
       return data.keys().hasAll(['title', 'author', 'category', 'priceBDT', 'isPublished', 'ownerId', 'createdAt']) &&
         data.keys().hasOnly([
@@ -77,7 +79,6 @@ service cloud.firestore {
           'publishedYear',
           'keyTakeaways',
           'sampleChapters',
-          'manuscriptContent',
           'originalFileStoragePath',
           'previewFileStoragePath',
           'isPublished',
@@ -108,7 +109,6 @@ service cloud.firestore {
         (!data.keys().hasAny(['publishedYear']) || (data.publishedYear is number && data.publishedYear >= 1900 && data.publishedYear <= 2100)) &&
         (!data.keys().hasAny(['keyTakeaways']) || (data.keyTakeaways is list && data.keyTakeaways.size() <= 10 && (data.keyTakeaways.size() == 0 || data.keyTakeaways[0] is string))) &&
         (!data.keys().hasAny(['sampleChapters']) || (data.sampleChapters is list && data.sampleChapters.size() <= 5 && (data.sampleChapters.size() == 0 || data.sampleChapters[0] is map))) &&
-        (!data.keys().hasAny(['manuscriptContent']) || (data.manuscriptContent is string && data.manuscriptContent.size() <= 300000)) &&
         (!data.keys().hasAny(['originalFileStoragePath']) || (data.originalFileStoragePath is string && data.originalFileStoragePath.size() <= 256)) &&
         (!data.keys().hasAny(['previewFileStoragePath']) || (data.previewFileStoragePath is string && data.previewFileStoragePath.size() <= 256)) &&
         (!data.keys().hasAny(['isFeatured']) || data.isFeatured is bool) &&
@@ -116,7 +116,24 @@ service cloud.firestore {
         (!data.keys().hasAny(['updatedAt']) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
 
-    // Products: Public read for published volumes; authenticated authors can publish, edit, and remove their own volumes
+    // Validation Blueprint: Private Author Manuscript Subcollection
+    function isValidPrivateManuscript(data) {
+      return data.keys().hasAll(['ownerId', 'updatedAt']) &&
+        data.keys().hasOnly([
+          'ownerId',
+          'manuscriptContent',
+          'originalFileName',
+          'hasUploadedPdf',
+          'updatedAt'
+        ]) &&
+        data.ownerId is string && data.ownerId == request.auth.uid && data.ownerId.size() > 0 && data.ownerId.size() <= 128 &&
+        data.updatedAt is string && data.updatedAt.size() > 0 && data.updatedAt.size() <= 64 &&
+        (!data.keys().hasAny(['manuscriptContent']) || (data.manuscriptContent is string && data.manuscriptContent.size() <= 300000)) &&
+        (!data.keys().hasAny(['originalFileName']) || (data.originalFileName is string && data.originalFileName.size() <= 180)) &&
+        (!data.keys().hasAny(['hasUploadedPdf']) || data.hasUploadedPdf is bool);
+    }
+
+    // Products: Public read for published metadata only; authenticated authors manage their own volumes
     match /products/{productId} {
       allow get: if isValidId(productId) && (
         existing().isPublished == true ||
@@ -126,8 +143,8 @@ service cloud.firestore {
         (isSignedIn() && existing().ownerId == request.auth.uid);
       allow create: if isValidId(productId) && isSignedIn() && isValidProduct(incoming());
       allow update: if isValidId(productId) && isSignedIn() &&
-        existing().ownerId == request.auth.uid &&
         isValidProduct(incoming()) &&
+        existing().ownerId == request.auth.uid &&
         incoming().ownerId == existing().ownerId &&
         incoming().createdAt == existing().createdAt &&
         incoming().diff(existing()).affectedKeys().hasOnly([
@@ -149,11 +166,26 @@ service cloud.firestore {
           'publishedYear',
           'keyTakeaways',
           'sampleChapters',
-          'manuscriptContent',
           'isPublished',
           'updatedAt'
         ]);
       allow delete: if isValidId(productId) && isSignedIn() && existing().ownerId == request.auth.uid;
+
+      // Private Manuscript Subcollection: Master Gate enforces parent product ownerId
+      match /private/{docId} {
+        allow get: if isValidId(productId) && isValidId(docId) && isSignedIn() &&
+          get(/databases/$(database)/documents/products/$(productId)).data.ownerId == request.auth.uid;
+        allow list: if false;
+        allow create: if isValidId(productId) && isValidId(docId) && isSignedIn() &&
+          isValidPrivateManuscript(incoming()) &&
+          get(/databases/$(database)/documents/products/$(productId)).data.ownerId == request.auth.uid;
+        allow update: if isValidId(productId) && isValidId(docId) && isSignedIn() &&
+          isValidPrivateManuscript(incoming()) &&
+          incoming().ownerId == existing().ownerId &&
+          get(/databases/$(database)/documents/products/$(productId)).data.ownerId == request.auth.uid;
+        allow delete: if isValidId(productId) && isValidId(docId) && isSignedIn() &&
+          get(/databases/$(database)/documents/products/$(productId)).data.ownerId == request.auth.uid;
+      }
     }
 
     // Users: Customers can read, register, and update their optional profile fields only

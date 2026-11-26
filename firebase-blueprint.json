@@ -2,13 +2,13 @@
   "entities": {
     "Product": {
       "title": "Product",
-      "description": "Ebook publication record published by Al Jabin authors and creators",
+      "description": "Public storefront metadata for published ebooks (private manuscripts and full PDFs are isolated in subcollections and server storage)",
       "type": "object",
       "properties": {
         "title": { "type": "string", "description": "Title of the publication", "maxLength": 180 },
         "slug": { "type": "string", "description": "URL-friendly slug", "maxLength": 200 },
         "subtitle": { "type": "string", "description": "Optional book subtitle", "maxLength": 240 },
-        "description": { "type": "string", "description": "Detailed book description", "maxLength": 5000 },
+        "description": { "type": "string", "description": "Detailed book synopsis", "maxLength": 5000 },
         "shortDescription": { "type": "string", "description": "Summary blurb", "maxLength": 600 },
         "author": { "type": "string", "description": "Author or pen name", "maxLength": 120 },
         "language": { "type": "string", "description": "Language of edition", "maxLength": 60 },
@@ -26,9 +26,8 @@
         "isbn": { "type": "string", "description": "Catalogue ID or ISBN", "maxLength": 64 },
         "publishedYear": { "type": "number", "description": "Year of publication" },
         "keyTakeaways": { "type": "array", "description": "List of core takeaways (max 10)" },
-        "sampleChapters": { "type": "array", "description": "Preview chapter excerpts (max 5)" },
-        "manuscriptContent": { "type": "string", "description": "Ebook full text/chapters for reader delivery", "maxLength": 300000 },
-        "originalFileStoragePath": { "type": "string", "description": "Private storage path to DRM-free original", "maxLength": 256 },
+        "sampleChapters": { "type": "array", "description": "Public preview chapter excerpts (max 5)" },
+        "originalFileStoragePath": { "type": "string", "description": "Server/Storage key reference (no direct public read)", "maxLength": 256 },
         "previewFileStoragePath": { "type": "string", "description": "Public sample excerpt path", "maxLength": 256 },
         "isPublished": { "type": "boolean", "description": "Publication availability status" },
         "isFeatured": { "type": "boolean", "description": "Featured shelf status" },
@@ -39,9 +38,22 @@
       },
       "required": ["title", "author", "category", "priceBDT", "isPublished", "ownerId", "createdAt"]
     },
+    "PrivateManuscript": {
+      "title": "PrivateManuscript",
+      "description": "Restricted author-only manuscript text and private PDF metadata (never publicly readable)",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "description": "Firebase Auth UID of owning author", "maxLength": 128 },
+        "manuscriptContent": { "type": "string", "description": "Full private ebook text", "maxLength": 300000 },
+        "originalFileName": { "type": "string", "description": "Uploaded PDF/text filename", "maxLength": 180 },
+        "hasUploadedPdf": { "type": "boolean", "description": "Whether a binary PDF was uploaded to protected server storage" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last update", "maxLength": 64 }
+      },
+      "required": ["ownerId", "updatedAt"]
+    },
     "User": {
       "title": "User",
-      "description": "Reader and independent author account profile",
+      "description": "Private reader and independent author account profile (strictly owner-readable)",
       "type": "object",
       "properties": {
         "uid": { "type": "string", "description": "Firebase Auth UID", "maxLength": 128 },
@@ -60,15 +72,15 @@
     },
     "Order": {
       "title": "Order",
-      "description": "Customer purchase transaction for digital volumes",
+      "description": "Customer purchase transaction for digital volumes (server-only writes)",
       "type": "object",
       "properties": {
         "orderNumber": { "type": "string", "description": "Unique order reference" },
-        "userId": { "type": "string", "description": "Buyer user UID or guest identifier" },
+        "userId": { "type": "string", "description": "Buyer user UID" },
         "customerName": { "type": "string", "description": "Full name of buyer" },
         "customerEmail": { "type": "string", "description": "Buyer verified email address" },
         "customerPhone": { "type": "string", "description": "Buyer contact phone number" },
-        "items": { "type": "string", "description": "JSON string of validated order line items" },
+        "items": { "type": "array", "description": "Validated order line items" },
         "subtotal": { "type": "number", "description": "Subtotal before discounts" },
         "discount": { "type": "number", "description": "Discount applied from coupons" },
         "total": { "type": "number", "description": "Final server-calculated charge" },
@@ -84,7 +96,7 @@
     },
     "Payment": {
       "title": "Payment",
-      "description": "Server-side payment verification log",
+      "description": "Server-side payment verification log (server-only writes)",
       "type": "object",
       "properties": {
         "orderId": { "type": "string", "description": "Referenced order ID" },
@@ -101,7 +113,7 @@
     },
     "Download": {
       "title": "Download",
-      "description": "Secure, tokenized digital ebook delivery entitlement",
+      "description": "Secure, tokenized digital ebook delivery entitlement (server-only writes)",
       "type": "object",
       "properties": {
         "orderId": { "type": "string", "description": "Associated verified order" },
@@ -119,7 +131,7 @@
     },
     "Coupon": {
       "title": "Coupon",
-      "description": "Promotional discount codes",
+      "description": "Promotional discount codes (server-only writes)",
       "type": "object",
       "properties": {
         "code": { "type": "string", "description": "Uppercase coupon code" },
@@ -136,11 +148,15 @@
   "firestore": {
     "/products/{productId}": {
       "schema": "Product",
-      "description": "Collection of user-published and curated publications"
+      "description": "Public storefront catalogue metadata for published publications"
+    },
+    "/products/{productId}/private/{docId}": {
+      "schema": "PrivateManuscript",
+      "description": "Strictly private author manuscript text and file references isolated from public reads"
     },
     "/users/{userId}": {
       "schema": "User",
-      "description": "Customer and author account records"
+      "description": "Customer and author private profile records"
     },
     "/orders/{orderId}": {
       "schema": "Order",

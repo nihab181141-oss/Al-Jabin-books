@@ -82,6 +82,7 @@ export const PublishBookPage: React.FC<PublishBookPageProps> = ({
   const [sampleTitle, setSampleTitle] = useState('Chapter 1 · Opening Excerpt');
   const [sampleExcerpt, setSampleExcerpt] = useState('');
   const [manuscriptContent, setManuscriptContent] = useState('');
+  const [uploadedPdfBase64, setUploadedPdfBase64] = useState<string | null>(null);
   const [coverImage, setCoverImage] = useState('');
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
 
@@ -115,13 +116,53 @@ export const PublishBookPage: React.FC<PublishBookPageProps> = ({
   const handleManuscriptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploadedFileName(file.name);
+    setErrorMsg(null);
     try {
       if (
-        file.type.startsWith('text/') ||
-        file.name.endsWith('.md') ||
-        file.name.endsWith('.txt')
+        file.type === 'application/pdf' ||
+        file.name.toLowerCase().endsWith('.pdf')
       ) {
+        const maxBytes = 15 * 1024 * 1024;
+        if (file.size > maxBytes) {
+          setErrorMsg('PDF file must be 15 MB or smaller.');
+          e.target.value = '';
+          return;
+        }
+        const buffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        // Verify %PDF- magic header
+        if (
+          bytes.length < 5 ||
+          bytes[0] !== 0x25 ||
+          bytes[1] !== 0x50 ||
+          bytes[2] !== 0x44 ||
+          bytes[3] !== 0x46 ||
+          bytes[4] !== 0x2d
+        ) {
+          setErrorMsg('The selected file does not have a valid PDF signature.');
+          e.target.value = '';
+          return;
+        }
+        let binary = '';
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+        }
+        setUploadedPdfBase64(btoa(binary));
+        setUploadedFileName(file.name);
+        setFormat('PDF (Original Edition)');
+        if (!manuscriptContent.trim()) {
+          setManuscriptContent(
+            `Digital PDF volume "${file.name}" (${Math.max(1, Math.round(file.size / 1024))} KB) secured in private vault.`
+          );
+        }
+      } else if (
+        file.type.startsWith('text/') ||
+        file.name.toLowerCase().endsWith('.md') ||
+        file.name.toLowerCase().endsWith('.txt')
+      ) {
+        setUploadedPdfBase64(null);
+        setUploadedFileName(file.name);
         const text = await file.text();
         const trimmed = text.slice(0, 280000);
         setManuscriptContent(trimmed);
@@ -131,11 +172,8 @@ export const PublishBookPage: React.FC<PublishBookPageProps> = ({
           setSampleExcerpt(trimmed.slice(0, 1200));
         }
       } else {
-        setManuscriptContent(
-          `Digital manuscript file "${file.name}" (${Math.round(file.size / 1024)} KB) uploaded by author ${author || 'Independent Creator'}.\n\n${description || title}`
-        );
+        setErrorMsg('Please upload a .pdf, .txt, or .md manuscript file.');
       }
-      setErrorMsg(null);
     } catch {
       setErrorMsg('Could not read uploaded manuscript file.');
     }
@@ -187,6 +225,8 @@ export const PublishBookPage: React.FC<PublishBookPageProps> = ({
         sampleExcerpt:
           sampleExcerpt.trim() || manuscriptContent.trim().slice(0, 1200) || undefined,
         manuscriptContent: manuscriptContent.trim() || undefined,
+        uploadedPdfBase64: uploadedPdfBase64 || undefined,
+        uploadedFileName: uploadedFileName || undefined,
         coverImage: coverImage || undefined,
       });
 
@@ -197,6 +237,7 @@ export const PublishBookPage: React.FC<PublishBookPageProps> = ({
       setTakeawaysInput('');
       setSampleExcerpt('');
       setManuscriptContent('');
+      setUploadedPdfBase64(null);
       setCoverImage('');
       setUploadedFileName(null);
     } catch (err: any) {
@@ -217,12 +258,15 @@ export const PublishBookPage: React.FC<PublishBookPageProps> = ({
               className="w-64 sm:w-72 h-auto object-contain select-none"
             />
           </div>
-          <div className="space-y-3 max-w-lg mx-auto">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-[#686B78] font-semibold">
+          <div className="space-y-3 max-w-xl mx-auto">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-[#D97706] font-extrabold">
               Author Self-Publishing Desk
             </div>
-            <h1 className="font-editorial text-3xl sm:text-4xl text-[#171923]">
-              Sign Up Before Publishing Your Ebook
+            <h1 className="text-3xl sm:text-5xl font-extrabold tracking-[-0.035em] text-[#171923] leading-[1.08]">
+              Sign Up Before{' '}
+              <span className="font-editorial italic font-bold text-[#171D50]">
+                Publishing Your Ebook
+              </span>
             </h1>
             <p className="text-sm text-[#575A66] leading-relaxed">
               Every independent author publishes under a verified account so you can edit or manage your editions anytime. Create an account in seconds—additional profile fields are optional.
@@ -284,11 +328,12 @@ export const PublishBookPage: React.FC<PublishBookPageProps> = ({
           {/* LEFT: Live Cover & Edition Preview */}
           <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-28">
             <div className="space-y-2">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-[#686B78] font-semibold">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-[#D97706] font-extrabold">
                 Self-Publishing Desk
               </div>
-              <h1 className="font-editorial text-3xl text-[#171923] leading-tight">
-                Publish Your Ebook
+              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-[-0.035em] text-[#171923] leading-[1.08]">
+                Publish Your{' '}
+                <span className="font-editorial italic font-bold text-[#171D50]">Ebook</span>
               </h1>
               <p className="text-xs text-[#575A66] leading-relaxed">
                 Upload or compose your own ebook. Once published, readers can preview excerpts and download or acquire it from the catalogue.
@@ -310,7 +355,7 @@ export const PublishBookPage: React.FC<PublishBookPageProps> = ({
                       {category}
                     </div>
                     <div className="space-y-2 my-auto">
-                      <div className="font-editorial text-xl leading-snug line-clamp-4">
+                      <div className="font-editorial font-bold text-xl leading-snug line-clamp-4">
                         {title.trim() || 'Your Book Title'}
                       </div>
                       {subtitle.trim() && (
@@ -588,7 +633,7 @@ export const PublishBookPage: React.FC<PublishBookPageProps> = ({
 
                   <label className="inline-flex items-center gap-1.5 min-h-[38px] px-4 py-2 bg-[#F5F4EF] hover:bg-[#EAE8E0] text-[#171D50] text-xs font-semibold rounded-full cursor-pointer transition-colors">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>{uploadedFileName ? uploadedFileName : 'Upload Manuscript (.txt/.md/.pdf)'}</span>
+                    <span>{uploadedFileName ? uploadedFileName : 'Upload Manuscript (.pdf / .txt / .md)'}</span>
                     <input
                       type="file"
                       accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
@@ -597,6 +642,24 @@ export const PublishBookPage: React.FC<PublishBookPageProps> = ({
                     />
                   </label>
                 </div>
+
+                {uploadedPdfBase64 && uploadedFileName && (
+                  <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs text-emerald-900">
+                    <span>
+                      Protected PDF staged for private vault delivery: <strong>{uploadedFileName}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadedPdfBase64(null);
+                        setUploadedFileName(null);
+                      }}
+                      className="text-emerald-800 hover:underline font-medium cursor-pointer shrink-0"
+                    >
+                      Clear file
+                    </button>
+                  </div>
+                )}
 
                 <textarea
                   rows={6}
