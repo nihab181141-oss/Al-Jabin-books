@@ -26,14 +26,12 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
   const {
     lookupOrder,
     currentUser,
-    userProfile,
     loginWithEmail,
     registerWithEmail,
     resetUserPassword,
     logoutUser,
     userLibrary,
     refreshUserLibrary,
-    showToast,
   } = useStore();
 
   const [activeTab, setActiveTab] = useState<'lookup' | 'library' | 'auth'>('lookup');
@@ -205,7 +203,7 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
                 </button>
               </div>
               <p className="text-[11px] text-[#686B78] font-light">
-                Find orders verified through SSLCOMMERZ or mobile banking. Instant access to download links.
+                Find orders verified through mobile banking or card checkout. Instant access to download links.
               </p>
             </form>
 
@@ -359,7 +357,7 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
                       </h4>
                       <div className="text-xs text-[#686B78]">{currentUser.email}</div>
                       <div className="text-[11px] text-emerald-700 font-medium mt-0.5">
-                        Role: {userProfile?.role || 'customer'} · Verified Session
+                        Reader Account · Verified Session
                       </div>
                     </div>
                   </div>

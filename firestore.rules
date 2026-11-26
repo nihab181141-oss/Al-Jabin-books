@@ -2,6 +2,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Global safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
     // Helper functions
     function isSignedIn() {
       return request.auth != null;
@@ -11,74 +16,77 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.role == 'admin' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
-      );
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
     }
 
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // Products: Anyone can read published books; only admins can write
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'displayName', 'email', 'role', 'createdAt', 'updatedAt']) &&
+        data.uid is string && data.uid == request.auth.uid && data.uid.size() <= 128 &&
+        data.email is string && data.email.size() > 0 && data.email.size() <= 320 &&
+        data.role is string && data.role == 'customer' &&
+        data.createdAt is string && data.createdAt.size() > 0 && data.createdAt.size() <= 64 &&
+        (!data.keys().hasAny(['displayName']) || (data.displayName is string && data.displayName.size() <= 120)) &&
+        (!data.keys().hasAny(['updatedAt']) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    // Products: Public read for published volumes; writes disabled from client SDKs
     match /products/{productId} {
-      allow get: if isValidId(productId) && (resource.data.isPublished == true || isAdmin());
-      allow list: if resource.data.isPublished == true || isAdmin();
-      allow create, update, delete: if isValidId(productId) && isAdmin();
+      allow get: if isValidId(productId) && existing().isPublished == true;
+      allow list: if existing().isPublished == true;
+      allow create, update, delete: if false;
     }
 
-    // Users: Users can read and update their own profile; admins have full access
+    // Users: Customers can read, register, and update their displayName only
     match /users/{userId} {
-      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
-      allow list: if isAdmin();
-      // Allow users to create their own record on signup, but cannot set role to admin directly
-      allow create: if isValidId(userId) && isOwner(userId) && request.resource.data.role != 'admin';
-      allow update: if isValidId(userId) && (
-        (isOwner(userId) && request.resource.data.role == resource.data.role) ||
-        isAdmin()
-      );
-      allow delete: if isValidId(userId) && isAdmin();
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId) && isOwner(userId) && isValidUser(incoming());
+      allow update: if isValidId(userId) && isOwner(userId) && isValidUser(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().email == existing().email &&
+        incoming().role == existing().role &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt']);
+      allow delete: if false;
     }
 
-    // Orders: Customers can read only their own orders; writes are strictly controlled
+    // Orders: Customers can read only their own orders; writes are server-only
     match /orders/{orderId} {
-      allow get: if isValidId(orderId) && (
-        isAdmin() ||
-        (isSignedIn() && resource.data.userId == request.auth.uid)
-      );
-      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      // Creation and updates are server-authoritative to prevent price manipulation
-      allow create, update: if isAdmin();
-      allow delete: if isAdmin();
+      allow get: if isValidId(orderId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create, update, delete: if false;
     }
 
-    // Payments: Strictly read by admin or order owner; written only by server backend
+    // Payments: Read by order owner only; written by server only
     match /payments/{paymentId} {
-      allow get: if isValidId(paymentId) && (
-        isAdmin() ||
-        (isSignedIn() && get(/databases/$(database)/documents/orders/$(resource.data.orderId)).data.userId == request.auth.uid)
-      );
-      allow list: if isAdmin();
-      allow write: if isAdmin();
+      allow get: if isValidId(paymentId) && isSignedIn() &&
+        get(/databases/$(database)/documents/orders/$(existing().orderId)).data.userId == request.auth.uid;
+      allow list: if false;
+      allow write: if false;
     }
 
-    // Downloads: Entitlement tokens issued and modified by server only
+    // Downloads: Read by entitled owner only; written by server only
     match /downloads/{downloadId} {
-      allow get: if isValidId(downloadId) && (
-        isAdmin() ||
-        (isSignedIn() && resource.data.userId == request.auth.uid)
-      );
-      allow list: if isAdmin();
-      allow write: if isAdmin();
+      allow get: if isValidId(downloadId) && isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow write: if false;
     }
 
-    // Coupons: Public can check active coupon codes; only admins can create/update
+    // Coupons: Public read for active codes only; writes disabled from client SDKs
     match /coupons/{couponId} {
-      allow get: if isValidId(couponId) && (resource.data.isActive == true || isAdmin());
-      allow list: if resource.data.isActive == true || isAdmin();
-      allow write: if isValidId(couponId) && isAdmin();
+      allow get: if isValidId(couponId) && existing().isActive == true;
+      allow list: if existing().isActive == true;
+      allow write: if false;
     }
   }
 }

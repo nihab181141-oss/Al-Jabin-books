@@ -12,30 +12,29 @@ import { SampleReaderModal } from './components/bookstore/SampleReaderModal';
 import { CheckoutModal } from './components/checkout/CheckoutModal';
 import { OrderSuccessModal } from './components/checkout/OrderSuccessModal';
 import { OrderLookupModal } from './components/orders/OrderLookupModal';
-import { AdminDashboard } from './components/admin/AdminDashboard';
 import { ReadingStudioModal } from './components/home/ReadingStudioModal';
-import { SSLCommerzSimulator } from './components/checkout/SSLCommerzSimulator';
 import { Toast } from './components/ui/Toast';
 
 export default function App() {
   const [isOrderLookupOpen, setIsOrderLookupOpen] = useState(false);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isReadingStudioOpen, setIsReadingStudioOpen] = useState(false);
 
   return (
     <StoreProvider>
-      <div className="min-h-screen bg-white text-[#171923] flex flex-col font-sans selection:bg-[#171D50] selection:text-white">
+      <div className="min-h-screen bg-[#F5F4EF] text-[#171923] flex flex-col font-sans selection:bg-[#171D50] selection:text-white">
         
         {/* Header with Text-Only Wordmark as required */}
         <Header
           onOpenOrderLookup={() => setIsOrderLookupOpen(true)}
-          onOpenAdmin={() => setIsAdminOpen(true)}
         />
 
         {/* Main Editorial Content */}
         <main className="flex-1">
           {/* Hero Section */}
-          <Hero onOpenReadingStudio={() => setIsReadingStudioOpen(true)} />
+          <Hero
+            onOpenReadingStudio={() => setIsReadingStudioOpen(true)}
+            onOpenOrderLookup={() => setIsOrderLookupOpen(true)}
+          />
 
           {/* Complete Bookstore Catalogue with Filters */}
           <BookCatalogue onOpenReadingStudio={() => setIsReadingStudioOpen(true)} />
@@ -50,7 +49,6 @@ export default function App() {
         {/* Full-Width Navy Blue Footer with Original Centered Logo Strip */}
         <Footer
           onOpenOrderLookup={() => setIsOrderLookupOpen(true)}
-          onOpenAdmin={() => setIsAdminOpen(true)}
         />
 
         {/* Global Modals & Drawers */}
@@ -63,15 +61,10 @@ export default function App() {
           isOpen={isOrderLookupOpen}
           onClose={() => setIsOrderLookupOpen(false)}
         />
-        <AdminDashboard
-          isOpen={isAdminOpen}
-          onClose={() => setIsAdminOpen(false)}
-        />
         <ReadingStudioModal
           isOpen={isReadingStudioOpen}
           onClose={() => setIsReadingStudioOpen(false)}
         />
-        <SSLCommerzSimulator />
         <Toast />
 
       </div>

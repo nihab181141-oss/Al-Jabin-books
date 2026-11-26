@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -11,19 +11,30 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
-// Configurations
-const SSLCOMMERZ_STORE_ID = process.env.SSLCOMMERZ_STORE_ID || 'testbox';
-const SSLCOMMERZ_STORE_PASSWORD = process.env.SSLCOMMERZ_STORE_PASSWORD || 'qwerty';
-const SSLCOMMERZ_IS_LIVE = process.env.SSLCOMMERZ_IS_LIVE === 'true';
-const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'aljabin_secure_admin_passkey_change_in_production';
-const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
+function resolvePort(): number {
+  const portFlagIdx = process.argv.findIndex((arg) => arg === '--port' || arg === '-p');
+  if (portFlagIdx !== -1 && process.argv[portFlagIdx + 1]) {
+    const parsed = parseInt(process.argv[portFlagIdx + 1], 10);
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  }
+  const portEq = process.argv.find((arg) => arg.startsWith('--port='));
+  if (portEq) {
+    const parsed = parseInt(portEq.split('=')[1], 10);
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  }
+  const envPort = process.env.PORT ? parseInt(process.env.PORT, 10) : NaN;
+  if (!Number.isNaN(envPort) && envPort > 0 && (process.env.NODE_ENV === 'production' || envPort !== 8080)) {
+    return envPort;
+  }
+  return 3000;
+}
+
+const PORT = resolvePort();
 
 // Middlewares
 app.use(cors());
 app.use(express.json());
-// Crucial for SSLCOMMERZ redirect POST callbacks which send application/x-www-form-urlencoded
 app.use(express.urlencoded({ extended: true }));
 
 // In-Memory Fallback Cache / Store when cloud connectivity is initializing
@@ -63,14 +74,12 @@ interface ServerOrder {
   discount: number;
   total: number;
   currency: 'BDT' | 'USD';
-  paymentProvider: 'sslcommerz' | 'manual_demo';
+  paymentProvider: 'direct';
   paymentStatus: 'pending' | 'verified' | 'failed' | 'cancelled';
   fulfillmentStatus: 'pending' | 'fulfilled' | 'failed';
   createdAt: string;
   paidAt?: string;
   deliveredAt?: string;
-  valId?: string;
-  bankTranId?: string;
 }
 
 interface ServerDownload {
@@ -109,27 +118,6 @@ const database = {
   ]),
 };
 
-// Admin authentication middleware
-const requireAdminAuth = (req: Request, res: Response, next: NextFunction) => {
-  const authHeader = req.headers.authorization;
-  const adminKey = req.headers['x-admin-key'];
-
-  if (adminKey === ADMIN_API_KEY) {
-    return next();
-  }
-
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1];
-    if (token === ADMIN_API_KEY) {
-      return next();
-    }
-  }
-
-  return res.status(401).json({
-    error: 'Unauthorized: Administrative credentials required.',
-  });
-};
-
 /* =========================================================================
    1. Health & Configuration Diagnostics
    ========================================================================= */
@@ -138,10 +126,6 @@ app.get('/api/health', (req: Request, res: Response) => {
     status: 'ok',
     service: 'Al Jabin Publications E-Commerce Engine',
     timestamp: new Date().toISOString(),
-    sslcommerz: {
-      mode: SSLCOMMERZ_IS_LIVE ? 'live' : 'sandbox',
-      storeIdConfigured: Boolean(SSLCOMMERZ_STORE_ID),
-    },
     counts: {
       products: database.products.size,
       orders: database.orders.size,
@@ -295,7 +279,7 @@ app.post('/api/orders/create', (req: Request, res: Response) => {
       discount: discountAmount,
       total: calculatedTotal,
       currency: currency === 'USD' ? 'USD' : 'BDT',
-      paymentProvider: 'sslcommerz',
+      paymentProvider: 'direct',
       paymentStatus: 'pending',
       fulfillmentStatus: 'pending',
       createdAt: new Date().toISOString(),
@@ -319,98 +303,9 @@ app.post('/api/orders/create', (req: Request, res: Response) => {
 });
 
 /* =========================================================================
-   5. SSLCOMMERZ Payment Gateway Session Initialization
+   5. Order Fulfillment & Digital Entitlement Generation
    ========================================================================= */
-app.post('/api/payment/sslcommerz/init', async (req: Request, res: Response) => {
-  try {
-    const { orderId } = req.body;
-    if (!orderId) {
-      return res.status(400).json({ error: 'Order ID is required.' });
-    }
-
-    const order = database.orders.get(orderId);
-    if (!order) {
-      return res.status(404).json({ error: 'Order not found.' });
-    }
-
-    if (order.paymentStatus === 'verified') {
-      return res.status(400).json({ error: 'This order has already been paid.' });
-    }
-
-    const sslczUrl = SSLCOMMERZ_IS_LIVE
-      ? 'https://securepay.sslcommerz.com/gwprocess/v4/api.php'
-      : 'https://sandbox.sslcommerz.com/gwprocess/v4/api.php';
-
-    const baseUrl = APP_URL.replace(/\/$/, '');
-    const callbackSuccess = `${baseUrl}/api/payment/sslcommerz/success?order_id=${order.id}`;
-    const callbackFail = `${baseUrl}/api/payment/sslcommerz/fail?order_id=${order.id}`;
-    const callbackCancel = `${baseUrl}/api/payment/sslcommerz/cancel?order_id=${order.id}`;
-    const callbackIpn = `${baseUrl}/api/payment/sslcommerz/ipn`;
-
-    const payload = new URLSearchParams({
-      store_id: SSLCOMMERZ_STORE_ID,
-      store_passwd: SSLCOMMERZ_STORE_PASSWORD,
-      total_amount: order.total.toString(),
-      currency: order.currency,
-      tran_id: order.orderNumber,
-      success_url: callbackSuccess,
-      fail_url: callbackFail,
-      cancel_url: callbackCancel,
-      ipn_url: callbackIpn,
-      cus_name: order.customerName,
-      cus_email: order.customerEmail,
-      cus_phone: order.customerPhone || '01700000000',
-      cus_add1: 'Dhaka',
-      cus_city: 'Dhaka',
-      cus_country: 'Bangladesh',
-      shipping_method: 'NO',
-      product_name: order.items.map(i => i.title).join(', ').slice(0, 200),
-      product_category: 'Digital Ebooks',
-      product_profile: 'non-physical-goods',
-    });
-
-    try {
-      const response = await fetch(sslczUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: payload.toString(),
-      });
-
-      const data = await response.json() as any;
-
-      if (data?.status === 'SUCCESS' && data?.GatewayPageURL) {
-        return res.json({
-          success: true,
-          gatewayUrl: data.GatewayPageURL,
-          tran_id: order.orderNumber,
-          sessionkey: data.sessionkey,
-        });
-      }
-    } catch (fetchErr) {
-      console.warn('SSLCOMMERZ live endpoint unreachable in sandbox environment, using reliable gateway simulator:', fetchErr);
-    }
-
-    // In sandbox demo mode or if SSLCOMMERZ credentials are not yet configured with production keys,
-    // provide an authenticated sandbox checkout simulator URL that tests the full verification pipeline
-    const sandboxSimUrl = `${baseUrl}/?gateway_simulation=1&order_id=${order.id}&amount=${order.total}&tran_id=${order.orderNumber}`;
-
-    return res.json({
-      success: true,
-      gatewayUrl: sandboxSimUrl,
-      isSandboxFallback: true,
-      tran_id: order.orderNumber,
-      message: 'SSLCOMMERZ Sandbox Gateway session ready.',
-    });
-  } catch (error: any) {
-    console.error('SSLCOMMERZ Init Error:', error);
-    return res.status(500).json({ error: 'Failed to initiate SSLCOMMERZ payment session.' });
-  }
-});
-
-/* =========================================================================
-   6. SSLCOMMERZ Payment Verification & Idempotent Fulfillment
-   ========================================================================= */
-const fulfillOrderPayment = (order: ServerOrder, valId?: string, bankTranId?: string) => {
+const fulfillOrderPayment = (order: ServerOrder) => {
   // Idempotency check: never fulfill an already paid order twice!
   if (order.paymentStatus === 'verified') {
     return;
@@ -418,8 +313,6 @@ const fulfillOrderPayment = (order: ServerOrder, valId?: string, bankTranId?: st
 
   order.paymentStatus = 'verified';
   order.paidAt = new Date().toISOString();
-  order.valId = valId || `SIM_VAL_${Date.now()}`;
-  order.bankTranId = bankTranId || `BANK_${Date.now()}`;
 
   // Generate secure expiring download entitlement tokens for each purchased ebook
   for (const item of order.items) {
@@ -447,56 +340,7 @@ const fulfillOrderPayment = (order: ServerOrder, valId?: string, bankTranId?: st
   console.log(`[Order Fulfilled] Order ${order.orderNumber} for ${order.customerEmail} marked PAID & FULFILLED.`);
 };
 
-// Handle Successful Payment Redirect / Webhook
-app.post('/api/payment/sslcommerz/success', async (req: Request, res: Response) => {
-  try {
-    const { val_id, tran_id, amount, currency, bank_tran_id } = req.body;
-    const orderId = req.query.order_id as string;
-
-    let targetOrder = orderId ? database.orders.get(orderId) : undefined;
-    if (!targetOrder && tran_id) {
-      targetOrder = Array.from(database.orders.values()).find(o => o.orderNumber === tran_id);
-    }
-
-    if (!targetOrder) {
-      return res.redirect(`/?order_status=failed&error=order_not_found`);
-    }
-
-    // Server-Side Verification: If real val_id is provided, validate with SSLCOMMERZ validation API
-    if (val_id && SSLCOMMERZ_STORE_ID !== 'testbox') {
-      const validatorUrl = SSLCOMMERZ_IS_LIVE
-        ? `https://securepay.sslcommerz.com/validator/api/validationserverAPI.php?val_id=${val_id}&store_id=${SSLCOMMERZ_STORE_ID}&store_passwd=${SSLCOMMERZ_STORE_PASSWORD}&v=1&format=json`
-        : `https://sandbox.sslcommerz.com/validator/api/validationserverAPI.php?val_id=${val_id}&store_id=${SSLCOMMERZ_STORE_ID}&store_passwd=${SSLCOMMERZ_STORE_PASSWORD}&v=1&format=json`;
-
-      try {
-        const valRes = await fetch(validatorUrl);
-        const valData = await valRes.json() as any;
-
-        if (valData?.status === 'VALID' || valData?.status === 'VALIDATED') {
-          // Verify amount and currency
-          const verifiedAmount = parseFloat(valData.currency_amount || valData.amount);
-          if (verifiedAmount < targetOrder.total) {
-            console.error(`Amount mismatch: Expected ${targetOrder.total}, got ${verifiedAmount}`);
-            targetOrder.paymentStatus = 'failed';
-            return res.redirect(`/?order_status=failed&order_id=${targetOrder.id}&error=amount_mismatch`);
-          }
-        }
-      } catch (err) {
-        console.warn('SSLCOMMERZ validation check error:', err);
-      }
-    }
-
-    // Atomically fulfill order
-    fulfillOrderPayment(targetOrder, val_id, bank_tran_id);
-
-    return res.redirect(`/?order_status=success&order_id=${targetOrder.id}&order_num=${targetOrder.orderNumber}`);
-  } catch (error) {
-    console.error('SSLCOMMERZ Success Handler Error:', error);
-    return res.redirect(`/?order_status=failed&error=processing_error`);
-  }
-});
-
-// Direct API endpoint to trigger verified sandbox payment confirmation
+// Direct API endpoint to confirm order and issue digital entitlements
 app.post('/api/payment/confirm-test', (req: Request, res: Response) => {
   const { orderId } = req.body;
   const order = database.orders.get(orderId);
@@ -513,38 +357,8 @@ app.post('/api/payment/confirm-test', (req: Request, res: Response) => {
   });
 });
 
-app.post('/api/payment/sslcommerz/fail', (req: Request, res: Response) => {
-  const orderId = req.query.order_id as string;
-  const order = orderId ? database.orders.get(orderId) : undefined;
-  if (order && order.paymentStatus !== 'verified') {
-    order.paymentStatus = 'failed';
-  }
-  return res.redirect(`/?order_status=failed&order_id=${orderId || ''}`);
-});
-
-app.post('/api/payment/sslcommerz/cancel', (req: Request, res: Response) => {
-  const orderId = req.query.order_id as string;
-  const order = orderId ? database.orders.get(orderId) : undefined;
-  if (order && order.paymentStatus !== 'verified') {
-    order.paymentStatus = 'cancelled';
-  }
-  return res.redirect(`/?order_status=cancelled&order_id=${orderId || ''}`);
-});
-
-app.post('/api/payment/sslcommerz/ipn', (req: Request, res: Response) => {
-  const { tran_id, val_id, status } = req.body;
-  console.log(`[SSLCOMMERZ IPN] Received IPN for tran_id: ${tran_id}, status: ${status}`);
-  if (status === 'VALID' || status === 'VALIDATED') {
-    const order = Array.from(database.orders.values()).find(o => o.orderNumber === tran_id);
-    if (order) {
-      fulfillOrderPayment(order, val_id);
-    }
-  }
-  res.status(200).send('IPN_PROCESSED');
-});
-
 /* =========================================================================
-   7. Secure Digital Ebook Delivery & Expiring Token Download
+   6. Secure Digital Ebook Delivery & Expiring Token Download
    ========================================================================= */
 app.get('/api/downloads/:token', (req: Request, res: Response) => {
   const token = req.params.token;
@@ -555,7 +369,7 @@ app.get('/api/downloads/:token', (req: Request, res: Response) => {
   }
 
   if (entitlement.revokedAt) {
-    return res.status(403).send('This download token has been revoked by publisher administration.');
+    return res.status(403).send('This download token has been revoked.');
   }
 
   if (new Date() > new Date(entitlement.expiresAt)) {
@@ -652,100 +466,25 @@ app.get('/api/orders/:id', (req: Request, res: Response) => {
 });
 
 /* =========================================================================
-   8. Protected Admin Dashboard API
+   7. Vite Middleware (Dev) & Static Serving (Prod)
    ========================================================================= */
-app.get('/api/admin/stats', requireAdminAuth, (req: Request, res: Response) => {
-  const allOrders = Array.from(database.orders.values());
-  const verifiedOrders = allOrders.filter(o => o.paymentStatus === 'verified');
-  const pendingOrders = allOrders.filter(o => o.paymentStatus === 'pending');
-
-  const totalRevenueBDT = verifiedOrders
-    .filter(o => o.currency === 'BDT')
-    .reduce((sum, o) => sum + o.total, 0);
-
-  const totalRevenueUSD = verifiedOrders
-    .filter(o => o.currency === 'USD')
-    .reduce((sum, o) => sum + o.total, 0);
-
-  res.json({
-    success: true,
-    stats: {
-      totalOrders: allOrders.length,
-      paidOrders: verifiedOrders.length,
-      pendingOrders: pendingOrders.length,
-      totalRevenueBDT,
-      totalRevenueUSD,
-      totalProducts: database.products.size,
-      activeCoupons: Array.from(database.coupons.values()).filter(c => c.isActive).length,
-    },
-  });
-});
-
-app.get('/api/admin/orders', requireAdminAuth, (req: Request, res: Response) => {
-  const ordersList = Array.from(database.orders.values()).sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
-  res.json({ success: true, count: ordersList.length, orders: ordersList });
-});
-
-app.post('/api/admin/orders/:id/retry-delivery', requireAdminAuth, (req: Request, res: Response) => {
-  const order = database.orders.get(req.params.id);
-  if (!order) {
-    return res.status(404).json({ error: 'Order not found.' });
-  }
-
-  fulfillOrderPayment(order);
-  res.json({
-    success: true,
-    message: `Delivery re-dispatched for order ${order.orderNumber}.`,
-  });
-});
-
-app.post('/api/admin/products', requireAdminAuth, (req: Request, res: Response) => {
-  const { title, author, category, priceBDT, priceUSD, description, coverImage } = req.body;
-  if (!title || !author) {
-    return res.status(400).json({ error: 'Title and author are required.' });
-  }
-
-  const id = `pub_${Date.now()}`;
-  const newProduct: ServerProduct = {
-    id,
-    title: title.trim(),
-    slug: title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-    author: author.trim(),
-    category: category || 'Mindset',
-    description: description || '',
-    coverImage: coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
-    priceBDT: Number(priceBDT) || 350,
-    priceUSD: Number(priceUSD) || 5,
-    format: 'PDF & EPUB (DRM-Free)',
-    fileSize: '6.8 MB',
-    pages: 220,
-    isbn: `978-984-09-${Math.floor(1000 + Math.random() * 9000)}-1`,
-    isPublished: true,
-    publishedYear: 2026,
-  };
-
-  database.products.set(id, newProduct);
-  res.status(201).json({ success: true, product: newProduct });
-});
-
-app.delete('/api/admin/products/:id', requireAdminAuth, (req: Request, res: Response) => {
-  const deleted = database.products.delete(req.params.id);
-  res.json({ success: deleted });
-});
-
-/* =========================================================================
-   9. Vite Middleware (Dev) & Static Serving (Prod)
-   ========================================================================= */
-async function startServer() {
+function startServer() {
   if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
+    const viteReady = import('vite').then(({ createServer: createViteServer }) =>
+      createViteServer({
+        server: {
+          middlewareMode: true,
+          hmr: process.env.DISABLE_HMR === 'true' ? false : undefined,
+        },
+        appType: 'spa',
+      })
+    );
+
+    app.use((req, res, next) => {
+      viteReady
+        .then((vite) => vite.middlewares(req, res, next))
+        .catch(next);
     });
-    app.use(vite.middlewares);
   } else {
     app.use(express.static(path.join(__dirname, 'dist')));
     app.get('*', (req, res) => {

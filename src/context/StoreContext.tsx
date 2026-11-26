@@ -25,11 +25,6 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 interface StoreContextType {
   // Books catalog
   books: Book[];
-  addBook: (book: Omit<Book, 'id'>) => Promise<void>;
-  updateBook: (book: Book) => Promise<void>;
-  deleteBook: (id: string) => Promise<void>;
-  clearAllBooks: () => void;
-  resetBooksToDefault: () => void;
   selectedBook: Book | null;
   setSelectedBook: (book: Book | null) => void;
   previewSampleBook: Book | null;
@@ -56,10 +51,8 @@ interface StoreContextType {
     customerPhone: string;
     paymentMethod: PaymentMethod;
     transactionId?: string;
-  }) => Promise<{ order: Order; gatewayUrl?: string }>;
-  updateOrderStatus: (orderId: string, status: 'pending' | 'verified' | 'failed') => void;
+  }) => Promise<{ order: Order }>;
   lookupOrder: (orderId: string) => Promise<Order | undefined>;
-  clearAllOrders: () => void;
   confirmedOrder: Order | null;
   setConfirmedOrder: (order: Order | null) => void;
 
@@ -68,8 +61,6 @@ interface StoreContextType {
   activeCoupon: Coupon | null;
   applyCoupon: (code: string) => Promise<{ success: boolean; message: string }>;
   removeCoupon: () => void;
-  addCoupon: (coupon: Coupon) => void;
-  toggleCoupon: (code: string) => void;
 
   // Customer Authentication & Library
   currentUser: FirebaseUser | null;
@@ -85,14 +76,10 @@ interface StoreContextType {
   // Newsletter
   subscribers: Subscriber[];
   subscribeNewsletter: (email: string) => { success: boolean; message: string };
-  clearAllSubscribers: () => void;
 
-  // Custom Brand Logo Assets
+  // Brand Logo Assets
   logoNavyOnWhite: string;
   logoWhiteOnNavy: string;
-  setLogoNavyOnWhite: (url: string) => void;
-  setLogoWhiteOnNavy: (url: string) => void;
-  resetLogosToDefault: () => void;
 
   // Notification Toast
   toastMessage: string | null;
@@ -176,10 +163,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
 
   // Logos
-  const [logoNavyOnWhite, setLogoNavyOnWhite] = useState<string>(() => {
+  const [logoNavyOnWhite] = useState<string>(() => {
     return localStorage.getItem(LOCAL_STORAGE_KEYS.LOGO_NAVY) || DEFAULT_LOGO_NAVY;
   });
-  const [logoWhiteOnNavy, setLogoWhiteOnNavy] = useState<string>(() => {
+  const [logoWhiteOnNavy] = useState<string>(() => {
     return localStorage.getItem(LOCAL_STORAGE_KEYS.LOGO_WHITE) || DEFAULT_LOGO_WHITE;
   });
 
@@ -241,7 +228,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               uid: user.uid,
               email: user.email,
               displayName: user.displayName || user.email.split('@')[0],
-              role: user.email === 'admin@aljabinpublications.com' ? 'admin' : 'customer',
+              role: 'customer',
               createdAt: new Date().toISOString(),
             };
             await setDoc(userDocRef, newProfile);
@@ -391,16 +378,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setActiveCoupon(null);
   };
 
-  const addCoupon = (coupon: Coupon) => {
-    setCoupons((prev) => [...prev.filter((c) => c.code !== coupon.code), coupon]);
-  };
-
-  const toggleCoupon = (code: string) => {
-    setCoupons((prev) =>
-      prev.map((c) => (c.code === code ? { ...c, isActive: !c.isActive } : c))
-    );
-  };
-
   // Orders creation: Communicates with backend /api/orders/create
   const createOrder = async ({
     customerName,
@@ -414,7 +391,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     customerPhone: string;
     paymentMethod: PaymentMethod;
     transactionId?: string;
-  }): Promise<{ order: Order; gatewayUrl?: string }> => {
+  }): Promise<{ order: Order }> => {
     // 1. Create order on server
     const response = await fetch('/api/orders/create', {
       method: 'POST',
@@ -468,21 +445,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setOrders((prev) => [newOrder, ...prev]);
 
-    // 2. If SSLCOMMERZ gateway selected, initialize session
-    if (paymentMethod === 'sslcommerz') {
-      const initRes = await fetch('/api/payment/sslcommerz/init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: newOrder.id }),
-      });
-      const initData = await initRes.json();
-      if (initRes.ok && initData.gatewayUrl) {
-        setIsCheckoutOpen(false);
-        return { order: newOrder, gatewayUrl: initData.gatewayUrl };
-      }
-    }
-
-    // 3. For test sandbox or MFS confirmed transactions, confirm delivery
+    // 2. Confirm direct checkout delivery
     try {
       await fetch('/api/payment/confirm-test', {
         method: 'POST',
@@ -497,13 +460,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setConfirmedOrder(newOrder);
     setIsCheckoutOpen(false);
     return { order: newOrder };
-  };
-
-  const updateOrderStatus = (orderId: string, status: 'pending' | 'verified' | 'failed') => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, paymentStatus: status } : o))
-    );
-    showToast(`Order ${orderId} updated to ${status}.`);
   };
 
   const lookupOrder = async (orderId: string): Promise<Order | undefined> => {
@@ -523,69 +479,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         o.orderNumber?.toUpperCase() === orderId.trim().toUpperCase() ||
         o.downloadAccessCode?.toUpperCase() === orderId.trim().toUpperCase()
     );
-  };
-
-  const clearAllOrders = () => {
-    setOrders([]);
-    localStorage.removeItem(LOCAL_STORAGE_KEYS.ORDERS);
-    showToast('Order records cleared.');
-  };
-
-  // Admin Book Management with Backend Sync
-  const addBook = async (bookData: Omit<Book, 'id'>) => {
-    try {
-      const res = await fetch('/api/admin/products', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-key': 'aljabin_secure_admin_passkey_change_in_production',
-        },
-        body: JSON.stringify(bookData),
-      });
-      const data = await res.json();
-      if (res.ok && data.product) {
-        setBooks((prev) => [data.product, ...prev]);
-        showToast(`Published "${data.product.title}".`);
-        return;
-      }
-    } catch {}
-
-    const newBook: Book = {
-      ...bookData,
-      id: `book-${Date.now().toString(36)}`,
-    };
-    setBooks((prev) => [newBook, ...prev]);
-    showToast(`Published new title: "${newBook.title}".`);
-  };
-
-  const updateBook = async (book: Book) => {
-    setBooks((prev) => prev.map((b) => (b.id === book.id ? book : b)));
-    showToast(`Updated "${book.title}".`);
-  };
-
-  const deleteBook = async (id: string) => {
-    try {
-      await fetch(`/api/admin/products/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'x-admin-key': 'aljabin_secure_admin_passkey_change_in_production',
-        },
-      });
-    } catch {}
-    setBooks((prev) => prev.filter((b) => b.id !== id));
-    showToast('Publication deleted.');
-  };
-
-  const clearAllBooks = () => {
-    setBooks([]);
-    localStorage.removeItem(LOCAL_STORAGE_KEYS.BOOKS);
-    showToast('Catalogue inventory cleared.');
-  };
-
-  const resetBooksToDefault = () => {
-    setBooks([]);
-    localStorage.removeItem(LOCAL_STORAGE_KEYS.BOOKS);
-    showToast('Catalogue reset to official state.');
   };
 
   // Firebase Authentication Actions
@@ -634,29 +527,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { success: true, message: 'Thank you for subscribing.' };
   };
 
-  const clearAllSubscribers = () => {
-    setSubscribers([]);
-    localStorage.removeItem(LOCAL_STORAGE_KEYS.SUBSCRIBERS);
-    showToast('Subscribers list reset.');
-  };
-
-  const resetLogosToDefault = () => {
-    setLogoNavyOnWhite(DEFAULT_LOGO_NAVY);
-    setLogoWhiteOnNavy(DEFAULT_LOGO_WHITE);
-    localStorage.removeItem(LOCAL_STORAGE_KEYS.LOGO_NAVY);
-    localStorage.removeItem(LOCAL_STORAGE_KEYS.LOGO_WHITE);
-    showToast('Logos reset to default official assets.');
-  };
-
   return (
     <StoreContext.Provider
       value={{
         books,
-        addBook,
-        updateBook,
-        deleteBook,
-        clearAllBooks,
-        resetBooksToDefault,
         selectedBook,
         setSelectedBook,
         previewSampleBook,
@@ -676,13 +550,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         activeCoupon,
         applyCoupon,
         removeCoupon,
-        addCoupon,
-        toggleCoupon,
         orders,
         createOrder,
-        updateOrderStatus,
         lookupOrder,
-        clearAllOrders,
         confirmedOrder,
         setConfirmedOrder,
         currentUser,
@@ -696,12 +566,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         refreshUserLibrary,
         subscribers,
         subscribeNewsletter,
-        clearAllSubscribers,
         logoNavyOnWhite,
         logoWhiteOnNavy,
-        setLogoNavyOnWhite,
-        setLogoWhiteOnNavy,
-        resetLogosToDefault,
         toastMessage,
         showToast,
       }}

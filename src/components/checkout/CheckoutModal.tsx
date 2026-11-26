@@ -3,15 +3,12 @@ import { useStore } from '../../context/StoreContext';
 import { PaymentMethod } from '../../types';
 import {
   X,
-  ShieldCheck,
   Lock,
   CreditCard,
   Smartphone,
   CheckCircle2,
   AlertCircle,
   ArrowRight,
-  ExternalLink,
-  Globe,
 } from 'lucide-react';
 
 export const CheckoutModal: React.FC = () => {
@@ -28,7 +25,7 @@ export const CheckoutModal: React.FC = () => {
   const [customerName, setCustomerName] = useState(currentUser?.displayName || '');
   const [customerEmail, setCustomerEmail] = useState(currentUser?.email || '');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('sslcommerz');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bkash');
   const [transactionId, setTransactionId] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -74,18 +71,13 @@ export const CheckoutModal: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const result = await createOrder({
+      await createOrder({
         customerName: customerName.trim(),
         customerEmail: customerEmail.trim(),
         customerPhone: customerPhone.trim(),
         paymentMethod,
         transactionId: transactionId.trim() || undefined,
       });
-
-      if (result.gatewayUrl) {
-        // Redirect to SSLCOMMERZ Gateway
-        window.location.href = result.gatewayUrl;
-      }
     } catch (err: any) {
       setErrorMsg(err?.message || 'An error occurred during order initialization. Please retry.');
       setIsSubmitting(false);
@@ -196,31 +188,6 @@ export const CheckoutModal: React.FC = () => {
               </h4>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* SSLCOMMERZ Official Gateway */}
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('sslcommerz')}
-                  className={`p-4 border text-left rounded-2xl transition-all cursor-pointer flex flex-col justify-between ${
-                    paymentMethod === 'sslcommerz'
-                      ? 'border-[#171D50] bg-[#171D50]/5 shadow-xs'
-                      : 'border-[#E8E9F0] hover:border-gray-300 bg-white'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-[#171D50]" />
-                      <span className="font-semibold text-xs text-[#171923]">SSLCOMMERZ Gateway</span>
-                    </div>
-                    {paymentMethod === 'sslcommerz' && <CheckCircle2 className="w-4 h-4 text-[#171D50]" />}
-                  </div>
-                  <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
-                    Visa, Mastercard, Amex, bKash, Nagad, Rocket, Upay & Bangladesh NetBanking.
-                  </p>
-                  <div className="mt-2 text-[10px] text-emerald-700 font-medium">
-                    ✓ Instant Automated Verification
-                  </div>
-                </button>
-
                 {/* Direct bKash MFS */}
                 <button
                   type="button"
@@ -243,6 +210,81 @@ export const CheckoutModal: React.FC = () => {
                   </p>
                   <div className="mt-2 text-[10px] text-[#686B78]">
                     Number: 01700-000000
+                  </div>
+                </button>
+
+                {/* Direct Nagad MFS */}
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('nagad')}
+                  className={`p-4 border text-left rounded-2xl transition-all cursor-pointer flex flex-col justify-between ${
+                    paymentMethod === 'nagad'
+                      ? 'border-[#171D50] bg-[#171D50]/5 shadow-xs'
+                      : 'border-[#E8E9F0] hover:border-gray-300 bg-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Smartphone className="w-4 h-4 text-[#F15A22]" />
+                      <span className="font-semibold text-xs text-[#171923]">Direct Nagad Transfer</span>
+                    </div>
+                    {paymentMethod === 'nagad' && <CheckCircle2 className="w-4 h-4 text-[#171D50]" />}
+                  </div>
+                  <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
+                    Nagad Payment / Send Money with Transaction ID (TrxID).
+                  </p>
+                  <div className="mt-2 text-[10px] text-[#686B78]">
+                    Number: 01700-000000
+                  </div>
+                </button>
+
+                {/* Direct Rocket MFS */}
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('rocket')}
+                  className={`p-4 border text-left rounded-2xl transition-all cursor-pointer flex flex-col justify-between ${
+                    paymentMethod === 'rocket'
+                      ? 'border-[#171D50] bg-[#171D50]/5 shadow-xs'
+                      : 'border-[#E8E9F0] hover:border-gray-300 bg-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Smartphone className="w-4 h-4 text-[#8C3494]" />
+                      <span className="font-semibold text-xs text-[#171923]">Rocket Mobile Banking</span>
+                    </div>
+                    {paymentMethod === 'rocket' && <CheckCircle2 className="w-4 h-4 text-[#171D50]" />}
+                  </div>
+                  <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
+                    DBBL Rocket transfer with confirmation Transaction ID (TrxID).
+                  </p>
+                  <div className="mt-2 text-[10px] text-[#686B78]">
+                    Number: 01700-000000
+                  </div>
+                </button>
+
+                {/* Card / International */}
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('card')}
+                  className={`p-4 border text-left rounded-2xl transition-all cursor-pointer flex flex-col justify-between ${
+                    paymentMethod === 'card'
+                      ? 'border-[#171D50] bg-[#171D50]/5 shadow-xs'
+                      : 'border-[#E8E9F0] hover:border-gray-300 bg-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-[#171D50]" />
+                      <span className="font-semibold text-xs text-[#171923]">Card & International</span>
+                    </div>
+                    {paymentMethod === 'card' && <CheckCircle2 className="w-4 h-4 text-[#171D50]" />}
+                  </div>
+                  <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
+                    Visa, Mastercard & Amex instant digital edition fulfillment.
+                  </p>
+                  <div className="mt-2 text-[10px] text-emerald-700 font-medium">
+                    Instant Download Entitlement
                   </div>
                 </button>
               </div>
@@ -295,9 +337,7 @@ export const CheckoutModal: React.FC = () => {
                 <span>Initializing Secure Session...</span>
               ) : (
                 <>
-                  <span>
-                    {paymentMethod === 'sslcommerz' ? `Pay ৳${finalTotal} via SSLCOMMERZ` : `Confirm Order (৳${finalTotal})`}
-                  </span>
+                  <span>Confirm Order (৳{finalTotal})</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}

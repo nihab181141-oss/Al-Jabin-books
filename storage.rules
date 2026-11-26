@@ -2,31 +2,21 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.role == 'admin'
-      );
-    }
-
     // Public book covers and sample reading excerpts
     match /covers/{allPaths=**} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if false;
     }
 
     match /samples/{allPaths=**} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if false;
     }
 
     // Original, unencrypted master ebook files: STRICTLY PRIVATE
-    // Download access is only granted via backend signed URLs or server proxy stream
+    // Download access is only granted via backend server stream
     match /ebooks/{allPaths=**} {
-      allow read, write: if isAdmin();
+      allow read, write: if false;
     }
   }
 }

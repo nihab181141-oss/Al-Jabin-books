@@ -1,13 +1,12 @@
 import React from 'react';
 import { useStore } from '../../context/StoreContext';
-import { ShieldCheck, Mail, MapPin, Globe, CreditCard } from 'lucide-react';
+import { Mail, MapPin } from 'lucide-react';
 
 interface FooterProps {
   onOpenOrderLookup: () => void;
-  onOpenAdmin: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ onOpenOrderLookup, onOpenAdmin }) => {
+export const Footer: React.FC<FooterProps> = ({ onOpenOrderLookup }) => {
   const { logoWhiteOnNavy } = useStore();
 
   const scrollToSection = (id: string) => {
@@ -118,14 +117,6 @@ export const Footer: React.FC<FooterProps> = ({ onOpenOrderLookup, onOpenAdmin }
                   className="hover:text-white transition-colors cursor-pointer text-left text-white/90 underline decoration-white/30 underline-offset-4"
                 >
                   Find Purchased Order
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={onOpenAdmin}
-                  className="hover:text-white transition-colors cursor-pointer text-left text-white/60"
-                >
-                  Publisher Portal
                 </button>
               </li>
             </ul>

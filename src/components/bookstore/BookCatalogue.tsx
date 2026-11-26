@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { BookCategory } from '../../types';
 import { useStore } from '../../context/StoreContext';
 import { BookCard } from './BookCard';
-import { Search, BookMarked } from 'lucide-react';
+import { Search, BookMarked, ArrowRight } from 'lucide-react';
 
 const CATEGORIES: BookCategory[] = [
   'All Books',
@@ -46,39 +46,41 @@ export const BookCatalogue: React.FC<BookCatalogueProps> = ({ onOpenReadingStudi
   }, [books, selectedCategory, searchQuery, sortBy]);
 
   return (
-    <section id="bookstore" className="w-full bg-[#FFFFFF] py-20 border-b border-[#E8E9F0] relative">
+    <section id="bookstore" className="w-full bg-white py-20 md:py-24 rounded-t-[36px] border-t border-black/[0.04] relative">
       <div id="featured-collection" className="absolute -top-20" />
       {/* Centered Content Container */}
       <div className="max-w-[1160px] mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Section Header */}
-        <div className="text-center max-w-2xl mx-auto mb-12">
-          <div className="text-xs uppercase tracking-[0.25em] text-[#686B78] font-semibold mb-3">
-            The Digital Publishing Shelf
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
+          <div className="space-y-2 max-w-xl">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-[#686B78] font-semibold">
+              The Digital Publishing Shelf
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-[-0.03em] text-[#171923]">
+              Editorial Catalogue
+            </h2>
           </div>
-          <h2 className="font-editorial text-3xl sm:text-4xl text-[#171923] font-normal tracking-tight mb-4">
-            Editorial Catalogue
-          </h2>
-          <p className="text-sm text-[#686B78] font-light leading-relaxed">
-            Every edition is published in DRM-free universal formats. Instant download access, permanent ownership, and elegant reading across all screens.
+          <p className="text-xs sm:text-sm text-[#686B78] font-normal max-w-md leading-relaxed">
+            Every edition is published in DRM-free universal formats for instant download and permanent ownership.
           </p>
         </div>
 
-        {/* Filter Bar & Search Controls */}
-        <div className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-[#E8E9F0]">
+        {/* Filter Segmented Bar & Search Controls */}
+        <div className="mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           
-          {/* Functional Category Filter (Circular pill buttons) */}
-          <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+          {/* Segmented Category Pill Track (Apple/Dribbble style) */}
+          <div className="inline-flex flex-wrap items-center gap-1 p-1.5 bg-[#F5F4EF] rounded-full">
             {CATEGORIES.map((cat) => {
               const active = selectedCategory === cat;
               return (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-4 py-2 text-xs tracking-wide transition-all cursor-pointer font-medium rounded-full ${
+                  className={`px-4 py-2 text-xs font-semibold tracking-tight transition-all cursor-pointer rounded-full ${
                     active
                       ? 'bg-[#171D50] text-white shadow-xs'
-                      : 'bg-[#FAFAFC] text-[#686B78] hover:text-[#171923] hover:bg-gray-100 border border-[#E8E9F0]'
+                      : 'text-[#686B78] hover:text-[#171923]'
                   }`}
                 >
                   {cat}
@@ -88,32 +90,30 @@ export const BookCatalogue: React.FC<BookCatalogueProps> = ({ onOpenReadingStudi
           </div>
 
           {/* Search & Sort Controls */}
-          <div className="flex items-center gap-3">
-            {/* Search Input with circular pill corners */}
+          <div className="flex items-center gap-2.5">
             <div className="relative flex-1 md:w-64">
-              <Search className="w-4 h-4 text-[#686B78] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Search className="w-4 h-4 text-[#686B78] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 placeholder="Search titles, authors..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-8 py-2 text-xs text-[#171923] bg-white border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none transition-colors rounded-full shadow-2xs"
+                className="w-full pl-10 pr-8 py-2.5 text-xs text-[#171923] bg-[#F5F4EF] border border-transparent focus:bg-white focus:border-[#171D50]/30 focus:outline-none transition-all rounded-full"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#686B78] hover:text-[#171923]"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-[#686B78] hover:text-[#171923] cursor-pointer"
                 >
                   ×
                 </button>
               )}
             </div>
 
-            {/* Sort Select with circular corners */}
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="px-4 py-2 text-xs text-[#171923] bg-white border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none cursor-pointer rounded-full shadow-2xs"
+              className="px-4 py-2.5 text-xs font-medium text-[#171923] bg-[#F5F4EF] border border-transparent focus:border-[#171D50]/30 focus:outline-none cursor-pointer rounded-full"
             >
               <option value="featured">Featured First</option>
               <option value="newest">Newest Editions</option>
@@ -125,9 +125,9 @@ export const BookCatalogue: React.FC<BookCatalogueProps> = ({ onOpenReadingStudi
 
         {/* Results Metadata */}
         <div className="flex items-center justify-between text-xs text-[#686B78] mb-6">
-          <div>
+          <div className="tabular-nums">
             Showing <span className="font-semibold text-[#171923]">{filteredBooks.length}</span> active {filteredBooks.length === 1 ? 'title' : 'titles'}
-            {selectedCategory !== 'All Books' && ` in ${selectedCategory}`}
+            {selectedCategory !== 'All Books' && ` · ${selectedCategory}`}
           </div>
           {searchQuery && (
             <div>
@@ -144,31 +144,35 @@ export const BookCatalogue: React.FC<BookCatalogueProps> = ({ onOpenReadingStudi
             ))}
           </div>
         ) : books.length === 0 ? (
-          <div className="text-center py-16 px-6 bg-[#FAF7F0] border border-[#EBE6DF] rounded-3xl max-w-xl mx-auto shadow-2xs">
-            <BookMarked className="w-10 h-10 text-[#171D50]/60 mx-auto mb-3" />
-            <h3 className="font-editorial text-2xl text-[#171923] mb-2 font-normal">
+          /* Clean Tactile Curation Card (Zero Fake Books) */
+          <div className="bg-[#F5F4EF] rounded-[30px] p-10 sm:p-14 text-center max-w-2xl mx-auto">
+            <div className="w-14 h-14 bg-white rounded-2xl shadow-2xs flex items-center justify-center mx-auto mb-5 text-[#171D50]">
+              <BookMarked className="w-6 h-6" />
+            </div>
+            <h3 className="text-2xl font-bold tracking-[-0.02em] text-[#171923] mb-2">
               Catalogue Curation in Progress
             </h3>
-            <p className="text-xs sm:text-sm text-[#686B78] font-light leading-relaxed mb-6">
-              Our inaugural editorial publications are currently undergoing curation and typography typesetting. In the meantime, experience our digital typesetting standards in the Reading Studio.
+            <p className="text-xs sm:text-sm text-[#575A66] font-normal leading-relaxed max-w-md mx-auto mb-7">
+              Our inaugural publications are undergoing final editorial typesetting. Experience our digital reading architecture live in the Reading Studio while titles prepare for release.
             </p>
             {onOpenReadingStudio && (
               <button
                 onClick={onOpenReadingStudio}
-                className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#171D50] text-white text-xs font-semibold rounded-full hover:bg-[#0f1338] transition-colors cursor-pointer shadow-sm"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-[#171D50] text-white text-xs font-semibold rounded-full hover:bg-[#0f1338] transition-all cursor-pointer shadow-sm"
               >
-                <span>Preview Reading Specimen Studio →</span>
+                <span>Open Reading Specimen Studio</span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
         ) : (
           /* Filter Mismatch State */
-          <div className="text-center py-20 bg-[#FAFAFC] border border-[#E8E9F0] rounded-3xl">
+          <div className="text-center py-16 px-6 bg-[#F5F4EF] rounded-[30px] max-w-xl mx-auto">
             <BookMarked className="w-10 h-10 text-[#686B78]/40 mx-auto mb-3" />
-            <h3 className="font-editorial text-xl text-[#171923] mb-1">
+            <h3 className="text-xl font-bold tracking-tight text-[#171923] mb-1">
               No matching publications found
             </h3>
-            <p className="text-xs text-[#686B78] max-w-sm mx-auto mb-4 font-light">
+            <p className="text-xs text-[#686B78] max-w-sm mx-auto mb-5">
               We couldn't find any books matching your current filters. Try resetting the category or search keyword.
             </p>
             <button
@@ -176,7 +180,7 @@ export const BookCatalogue: React.FC<BookCatalogueProps> = ({ onOpenReadingStudi
                 setSelectedCategory('All Books');
                 setSearchQuery('');
               }}
-              className="px-6 py-2.5 bg-[#171D50] text-white text-xs font-medium tracking-wide hover:bg-[#0f1338] transition-colors rounded-full cursor-pointer"
+              className="px-6 py-2.5 bg-[#171D50] text-white text-xs font-semibold hover:bg-[#0f1338] transition-colors rounded-full cursor-pointer"
             >
               Reset Filters
             </button>

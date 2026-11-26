@@ -25,13 +25,13 @@
     },
     "User": {
       "title": "User",
-      "description": "Customer and administrator account profile",
+      "description": "Customer account profile",
       "type": "object",
       "properties": {
         "uid": { "type": "string", "description": "Firebase Auth UID" },
         "displayName": { "type": "string", "description": "Customer display name" },
         "email": { "type": "string", "description": "Customer email address" },
-        "role": { "type": "string", "enum": ["customer", "admin"], "description": "Access control role" },
+        "role": { "type": "string", "enum": ["customer"], "description": "Customer role" },
         "createdAt": { "type": "string", "description": "ISO timestamp of registration" },
         "updatedAt": { "type": "string", "description": "ISO timestamp of last update" }
       },
@@ -52,7 +52,7 @@
         "discount": { "type": "number", "description": "Discount applied from coupons" },
         "total": { "type": "number", "description": "Final server-calculated charge" },
         "currency": { "type": "string", "enum": ["BDT", "USD"], "description": "Order currency" },
-        "paymentProvider": { "type": "string", "enum": ["sslcommerz", "manual_demo"], "description": "Gateway provider" },
+        "paymentProvider": { "type": "string", "enum": ["direct"], "description": "Payment channel" },
         "paymentStatus": { "type": "string", "enum": ["pending", "verified", "failed", "cancelled"], "description": "Payment verification state" },
         "fulfillmentStatus": { "type": "string", "enum": ["pending", "fulfilled", "failed"], "description": "Digital delivery state" },
         "createdAt": { "type": "string", "description": "ISO timestamp of creation" },
@@ -119,7 +119,7 @@
     },
     "/users/{userId}": {
       "schema": "User",
-      "description": "Customer and administrative user records"
+      "description": "Customer user records"
     },
     "/orders/{orderId}": {
       "schema": "Order",

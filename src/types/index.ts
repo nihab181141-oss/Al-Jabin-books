@@ -42,7 +42,7 @@ export interface CartItem {
   quantity: number;
 }
 
-export type PaymentMethod = 'sslcommerz' | 'bkash' | 'nagad' | 'rocket' | 'card' | 'international';
+export type PaymentMethod = 'bkash' | 'nagad' | 'rocket' | 'card' | 'international';
 
 export interface OrderItem {
   bookId: string;
@@ -104,6 +104,6 @@ export interface CustomerProfile {
   uid: string;
   email: string;
   displayName?: string;
-  role: 'customer' | 'admin';
+  role: 'customer';
   createdAt: string;
 }

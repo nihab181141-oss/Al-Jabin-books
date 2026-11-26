@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import { ShoppingBag, Menu, X, Shield, Search, ArrowRight } from 'lucide-react';
+import { ShoppingBag, Menu, X, ArrowRight } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 
 interface HeaderProps {
   onOpenOrderLookup: () => void;
-  onOpenAdmin: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenOrderLookup, onOpenAdmin }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenOrderLookup }) => {
   const { cartCount, setIsCartOpen } = useStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -76,17 +75,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenOrderLookup, onOpenAdmin }
 
         {/* Action Controls */}
         <div className="flex items-center space-x-3">
-          {/* Admin shortcut button */}
-          <button
-            onClick={onOpenAdmin}
-            title="Publisher Admin Portal"
-            className="hidden lg:flex items-center gap-1.5 text-xs text-white/80 hover:text-white px-3.5 py-1.5 transition-colors border border-white/20 hover:border-white/50 hover:bg-white/10 rounded-full"
-            aria-label="Open Admin Dashboard"
-          >
-            <Shield className="w-3.5 h-3.5" />
-            <span>Admin</span>
-          </button>
-
           {/* Shopping Bag Button */}
           <button
             onClick={() => setIsCartOpen(true)}
@@ -150,20 +138,10 @@ export const Header: React.FC<HeaderProps> = ({ onOpenOrderLookup, onOpenAdmin }
                 setMobileMenuOpen(false);
                 onOpenOrderLookup();
               }}
-              className="text-left py-2.5 px-3 text-white/80 hover:bg-white/10 rounded-xl border-b border-white/10 flex items-center justify-between"
+              className="text-left py-2.5 px-3 text-white/80 hover:bg-white/10 rounded-xl flex items-center justify-between"
             >
               <span>Download Access / Order Lookup</span>
               <ArrowRight className="w-4 h-4 text-white/60" />
-            </button>
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                onOpenAdmin();
-              }}
-              className="text-left py-2.5 px-3 text-white/80 hover:bg-white/10 rounded-xl flex items-center justify-between"
-            >
-              <span>Publisher Portal (Admin)</span>
-              <Shield className="w-4 h-4 text-white/60" />
             </button>
           </nav>
         </div>
