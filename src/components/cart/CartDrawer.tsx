@@ -45,23 +45,23 @@ export const CartDrawer: React.FC = () => {
         className="absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity animate-fade-in"
       />
 
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+      <div className="fixed inset-y-0 right-0 max-w-full flex pl-4 sm:pl-10">
         <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col justify-between border-l border-[#E8E9F0]">
           
           {/* Header */}
-          <div className="p-6 border-b border-[#E8E9F0] flex items-center justify-between bg-[#FAFAFC]">
-            <div className="flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-[#171D50]" />
-              <h3 className="font-editorial text-xl text-[#171923] font-medium">
+          <div className="px-5 py-4 sm:p-6 border-b border-[#E8E9F0] flex items-center justify-between bg-[#FAFAFC]">
+            <div className="flex items-center gap-2 min-w-0">
+              <ShoppingBag className="w-5 h-5 text-[#171D50] shrink-0" />
+              <h3 className="font-editorial text-lg sm:text-xl text-[#171923] font-medium truncate">
                 Your Reading Bag
               </h3>
-              <span className="text-xs text-[#686B78] font-sans">
+              <span className="text-xs text-[#686B78] font-sans tabular-nums shrink-0">
                 ({cartCount} {cartCount === 1 ? 'volume' : 'volumes'})
               </span>
             </div>
             <button
               onClick={() => setIsCartOpen(false)}
-              className="p-1.5 text-[#686B78] hover:text-[#171923] hover:bg-gray-100 rounded-full transition-colors"
+              className="min-w-[40px] min-h-[40px] flex items-center justify-center text-[#686B78] hover:text-[#171923] hover:bg-gray-100 rounded-full transition-colors cursor-pointer"
               aria-label="Close cart"
             >
               <X className="w-5 h-5" />
@@ -69,27 +69,25 @@ export const CartDrawer: React.FC = () => {
           </div>
 
           {/* Cart Item List */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4">
             {cart.length === 0 ? (
-              <div className="text-center py-10 space-y-4">
-                <div className="w-48 h-48 mx-auto bg-[#E9F3F0] rounded-3xl p-4 flex items-center justify-center shadow-2xs">
-                  <img
-                    src="/assets/aistudio/Bookshop-bro_04087275.svg"
-                    alt="Empty reading bag illustration"
-                    className="w-full h-full object-contain"
-                  />
-                </div>
+              <div className="text-center py-8 sm:py-10 space-y-5 flex flex-col items-center">
+                <img
+                  src="/assets/aistudio/Bookshop-bro_04087275.svg"
+                  alt="Empty reading bag illustration"
+                  className="w-48 h-48 mx-auto object-contain select-none"
+                />
                 <div className="space-y-2">
-                  <h4 className="font-editorial text-lg text-[#171923]">
+                  <h4 className="font-editorial text-xl text-[#171923]">
                     Your bag is currently empty
                   </h4>
-                  <p className="text-xs text-[#686B78] max-w-xs mx-auto leading-relaxed font-light">
+                  <p className="text-xs sm:text-sm text-[#686B78] max-w-xs mx-auto leading-relaxed font-light">
                     Explore our bookstore catalogue to discover thoughtful publications and practical manuals.
                   </p>
                 </div>
                 <button
                   onClick={() => setIsCartOpen(false)}
-                  className="mt-2 px-6 py-2.5 bg-[#171D50] text-white text-xs font-semibold tracking-wider uppercase hover:bg-[#0f1338] rounded-full transition-colors cursor-pointer"
+                  className="min-h-[44px] px-7 py-2.5 bg-[#171D50] text-white text-xs font-semibold tracking-wider uppercase hover:bg-[#0f1338] rounded-full transition-colors cursor-pointer whitespace-nowrap"
                 >
                   Browse Books
                 </button>
@@ -141,7 +139,7 @@ export const CartDrawer: React.FC = () => {
 
                       {/* Line Price & Remove */}
                       <div className="flex items-center gap-3">
-                        <span className="text-sm font-semibold text-[#171D50]">
+                        <span className="text-sm font-semibold text-[#171D50] tabular-nums">
                           ৳{item.book.price * item.quantity}
                         </span>
                         <button
@@ -214,7 +212,7 @@ export const CartDrawer: React.FC = () => {
               </form>
 
               {/* Subtotal Calculation */}
-              <div className="space-y-1.5 text-xs text-[#686B78] pt-2 border-t border-[#E8E9F0]">
+              <div className="space-y-1.5 text-xs text-[#686B78] pt-2 border-t border-[#E8E9F0] tabular-nums">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
                   <span className="font-medium text-[#171923]">৳{cartSubtotal}</span>
@@ -237,7 +235,7 @@ export const CartDrawer: React.FC = () => {
                   setIsCartOpen(false);
                   setIsCheckoutOpen(true);
                 }}
-                className="w-full py-3.5 bg-[#171D50] text-white text-xs font-semibold tracking-widest uppercase hover:bg-[#0f1338] transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm rounded-full"
+                className="w-full min-h-[46px] py-3 bg-[#171D50] text-white text-xs font-semibold tracking-widest uppercase hover:bg-[#0f1338] transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm rounded-full"
               >
                 <span>Proceed to Checkout</span>
                 <ArrowRight className="w-4 h-4" />

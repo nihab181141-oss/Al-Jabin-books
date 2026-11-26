@@ -2,40 +2,61 @@
   "entities": {
     "Product": {
       "title": "Product",
-      "description": "Ebook publication record managed by publisher",
+      "description": "Ebook publication record published by Al Jabin authors and creators",
       "type": "object",
       "properties": {
-        "title": { "type": "string", "description": "Title of the publication" },
-        "slug": { "type": "string", "description": "URL-friendly slug" },
-        "description": { "type": "string", "description": "Detailed book description" },
-        "shortDescription": { "type": "string", "description": "Summary blurb" },
-        "author": { "type": "string", "description": "Author or editorial curator" },
-        "language": { "type": "string", "description": "Language of edition" },
-        "category": { "type": "string", "description": "Literary or knowledge category" },
-        "coverImage": { "type": "string", "description": "Cover artwork URL" },
-        "priceBDT": { "type": "number", "description": "Price in Bangladeshi Taka" },
+        "title": { "type": "string", "description": "Title of the publication", "maxLength": 180 },
+        "slug": { "type": "string", "description": "URL-friendly slug", "maxLength": 200 },
+        "subtitle": { "type": "string", "description": "Optional book subtitle", "maxLength": 240 },
+        "description": { "type": "string", "description": "Detailed book description", "maxLength": 5000 },
+        "shortDescription": { "type": "string", "description": "Summary blurb", "maxLength": 600 },
+        "author": { "type": "string", "description": "Author or pen name", "maxLength": 120 },
+        "language": { "type": "string", "description": "Language of edition", "maxLength": 60 },
+        "category": {
+          "type": "string",
+          "enum": ["Personal Growth", "Mindset", "Productivity", "Fiction"],
+          "description": "Literary or knowledge category"
+        },
+        "coverImage": { "type": "string", "description": "Cover artwork URL or compressed data URL", "maxLength": 250000 },
+        "priceBDT": { "type": "number", "description": "Price in Bangladeshi Taka (0 for free)" },
         "priceUSD": { "type": "number", "description": "Optional price in USD" },
-        "originalFileStoragePath": { "type": "string", "description": "Private storage path to DRM-free original" },
-        "previewFileStoragePath": { "type": "string", "description": "Public sample excerpt path" },
+        "format": { "type": "string", "description": "Edition format (e.g., PDF & EPUB)", "maxLength": 60 },
+        "fileSize": { "type": "string", "description": "Digital file size label", "maxLength": 40 },
+        "pages": { "type": "number", "description": "Estimated or actual page count" },
+        "isbn": { "type": "string", "description": "Catalogue ID or ISBN", "maxLength": 64 },
+        "publishedYear": { "type": "number", "description": "Year of publication" },
+        "keyTakeaways": { "type": "array", "description": "List of core takeaways (max 10)" },
+        "sampleChapters": { "type": "array", "description": "Preview chapter excerpts (max 5)" },
+        "manuscriptContent": { "type": "string", "description": "Ebook full text/chapters for reader delivery", "maxLength": 300000 },
+        "originalFileStoragePath": { "type": "string", "description": "Private storage path to DRM-free original", "maxLength": 256 },
+        "previewFileStoragePath": { "type": "string", "description": "Public sample excerpt path", "maxLength": 256 },
         "isPublished": { "type": "boolean", "description": "Publication availability status" },
-        "createdAt": { "type": "string", "description": "ISO timestamp of creation" },
-        "updatedAt": { "type": "string", "description": "ISO timestamp of last update" }
+        "isFeatured": { "type": "boolean", "description": "Featured shelf status" },
+        "isNewRelease": { "type": "boolean", "description": "New release flag" },
+        "ownerId": { "type": "string", "description": "Firebase Auth UID of publishing author", "maxLength": 128 },
+        "createdAt": { "type": "string", "description": "ISO timestamp of creation", "maxLength": 64 },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last update", "maxLength": 64 }
       },
-      "required": ["title", "author", "category", "priceBDT", "isPublished"]
+      "required": ["title", "author", "category", "priceBDT", "isPublished", "ownerId", "createdAt"]
     },
     "User": {
       "title": "User",
-      "description": "Customer account profile",
+      "description": "Reader and independent author account profile",
       "type": "object",
       "properties": {
-        "uid": { "type": "string", "description": "Firebase Auth UID" },
-        "displayName": { "type": "string", "description": "Customer display name" },
-        "email": { "type": "string", "description": "Customer email address" },
-        "role": { "type": "string", "enum": ["customer"], "description": "Customer role" },
-        "createdAt": { "type": "string", "description": "ISO timestamp of registration" },
-        "updatedAt": { "type": "string", "description": "ISO timestamp of last update" }
+        "uid": { "type": "string", "description": "Firebase Auth UID", "maxLength": 128 },
+        "displayName": { "type": "string", "description": "Full name (optional)", "maxLength": 120 },
+        "penName": { "type": "string", "description": "Author / pen name (optional)", "maxLength": 120 },
+        "email": { "type": "string", "description": "Account email address", "maxLength": 320 },
+        "phone": { "type": "string", "description": "Phone or WhatsApp number (optional)", "maxLength": 40 },
+        "location": { "type": "string", "description": "City or country (optional)", "maxLength": 120 },
+        "bio": { "type": "string", "description": "Short author/reader bio (optional)", "maxLength": 500 },
+        "website": { "type": "string", "description": "Personal website or social URL (optional)", "maxLength": 256 },
+        "role": { "type": "string", "enum": ["customer"], "description": "Account role" },
+        "createdAt": { "type": "string", "description": "ISO timestamp of registration", "maxLength": 64 },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last update", "maxLength": 64 }
       },
-      "required": ["uid", "email", "role"]
+      "required": ["uid", "email", "role", "createdAt"]
     },
     "Order": {
       "title": "Order",
@@ -115,11 +136,11 @@
   "firestore": {
     "/products/{productId}": {
       "schema": "Product",
-      "description": "Collection of published and draft publications"
+      "description": "Collection of user-published and curated publications"
     },
     "/users/{userId}": {
       "schema": "User",
-      "description": "Customer user records"
+      "description": "Customer and author account records"
     },
     "/orders/{orderId}": {
       "schema": "Order",

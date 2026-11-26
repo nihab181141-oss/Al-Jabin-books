@@ -79,18 +79,20 @@ export const BookDetailsModal: React.FC = () => {
                 </div>
               </div>
 
-              {/* Price Block with rounded corners */}
-              <div className="p-4 bg-[#FAFAFC] border border-[#E8E9F0] rounded-2xl flex items-center justify-between shadow-2xs">
+              {/* Price Block */}
+              <div className="p-4 bg-[#FAFAFC] border border-[#E8E9F0] rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
                 <div>
                   <div className="text-[11px] uppercase tracking-wider text-[#686B78]">Digital Edition Price</div>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-bold text-[#171D50]">৳{selectedBook.price}</span>
+                  <div className="flex flex-wrap items-baseline gap-2.5 tabular-nums">
+                    <span className="text-2xl font-bold text-[#171D50]">
+                      {selectedBook.price === 0 ? 'Free Edition' : `৳${selectedBook.price}`}
+                    </span>
                     {selectedBook.originalPrice && (
                       <span className="text-sm text-[#686B78] line-through">৳{selectedBook.originalPrice}</span>
                     )}
                     {selectedBook.discountPercentage && (
-                      <span className="text-xs font-medium text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                        Save {selectedBook.discountPercentage}%
+                      <span className="text-xs font-semibold text-emerald-700">
+                        · Save {selectedBook.discountPercentage}%
                       </span>
                     )}
                   </div>
@@ -100,7 +102,7 @@ export const BookDetailsModal: React.FC = () => {
                   onClick={() => {
                     addToCart(selectedBook, 1);
                   }}
-                  className="px-6 py-3 bg-[#171D50] text-white text-xs font-semibold tracking-wider uppercase hover:bg-[#0f1338] rounded-full transition-colors flex items-center gap-2 cursor-pointer shadow-sm"
+                  className="w-full sm:w-auto min-h-[44px] px-6 py-3 bg-[#171D50] text-white text-xs font-semibold tracking-wider uppercase hover:bg-[#0f1338] rounded-full transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm whitespace-nowrap"
                 >
                   <ShoppingBag className="w-4 h-4" />
                   <span>Add to Bag</span>

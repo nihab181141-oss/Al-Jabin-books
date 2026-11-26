@@ -25,7 +25,7 @@ interface RealSampleEntry {
 }
 
 export const ReadingStudioModal: React.FC<ReadingStudioModalProps> = ({ isOpen, onClose }) => {
-  const { books, addToCart } = useStore();
+  const { books, addToCart, logoIconColor } = useStore();
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [fontFamily, setFontFamily] = useState<'serif' | 'sans' | 'mono'>('serif');
@@ -106,7 +106,7 @@ export const ReadingStudioModal: React.FC<ReadingStudioModalProps> = ({ isOpen, 
       >
         {/* Top Control Bar: Typography & Reading Experience Customization */}
         <div
-          className={`flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b ${themeStyles.border} ${themeStyles.toolbar} transition-colors`}
+          className={`flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-3.5 sm:py-4 border-b ${themeStyles.border} ${themeStyles.toolbar} transition-colors`}
         >
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-[#171D50] text-white flex items-center justify-center shadow-xs">
@@ -213,8 +213,16 @@ export const ReadingStudioModal: React.FC<ReadingStudioModalProps> = ({ isOpen, 
         </div>
 
         {/* Studio Content Area */}
-        <div className="flex-1 overflow-y-auto p-6 sm:p-10 md:p-12">
-          <div className="mx-auto max-w-[680px]">
+        <div className="relative flex-1 overflow-y-auto p-5 sm:p-10 md:p-12">
+          <img
+            src={logoIconColor}
+            alt=""
+            aria-hidden="true"
+            className={`pointer-events-none select-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 opacity-[0.035] ${
+              theme === 'midnight' ? 'brightness-0 invert' : ''
+            }`}
+          />
+          <div className="relative mx-auto max-w-[780px]">
             {currentSample ? (
               <>
                 <div className="flex items-center justify-between text-xs tracking-widest uppercase mb-8 pb-4 border-b border-black/10">
@@ -273,34 +281,34 @@ export const ReadingStudioModal: React.FC<ReadingStudioModalProps> = ({ isOpen, 
                 </div>
               </>
             ) : (
-              <div className="space-y-8 text-left">
-                <div className="flex justify-center">
-                  <div className="w-44 h-44 bg-[#EAE6FF] rounded-3xl p-3 flex items-center justify-center shadow-2xs">
-                    <img
-                      src="/assets/aistudio/Ebook-rafiki_016c9ebe.svg"
-                      alt="Ebook reading studio illustration"
-                      className="w-full h-full object-contain"
-                    />
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center text-left py-2">
+                <div className="md:col-span-5 flex justify-center">
+                  <img
+                    src="/assets/aistudio/Ebook-rafiki_016c9ebe.svg"
+                    alt="Ebook reading studio illustration"
+                    className="w-full max-w-[260px] sm:max-w-[300px] h-auto object-contain select-none"
+                  />
+                </div>
+
+                <div className="md:col-span-7 space-y-5">
+                  <div className="space-y-2 text-center md:text-left">
+                    <h2 className={`font-editorial text-2xl sm:text-3xl font-normal ${themeStyles.text}`}>
+                      No Published Volumes Yet
+                    </h2>
+                    <p className={`text-xs sm:text-sm ${themeStyles.muted} leading-relaxed`}>
+                      When books are published to the catalogue, their sample chapters will open here. Test the reader typography settings below using your own text.
+                    </p>
                   </div>
-                </div>
 
-                <div className="text-center space-y-2">
-                  <h2 className={`font-editorial text-2xl sm:text-3xl font-normal ${themeStyles.text}`}>
-                    No Published Volumes Yet
-                  </h2>
-                  <p className={`text-xs sm:text-sm ${themeStyles.muted} max-w-md mx-auto`}>
-                    When books are published to the catalogue, their sample chapters will open here. You can test the reader typography settings below using your own text.
-                  </p>
+                  <textarea
+                    value={sandboxText}
+                    onChange={(e) => setSandboxText(e.target.value)}
+                    rows={5}
+                    aria-label="Reader typography preview text"
+                    className={`w-full p-5 rounded-2xl border ${themeStyles.border} ${themeStyles.card} ${themeStyles.text} ${fontClass} leading-[1.8] focus:outline-none focus:ring-2 focus:ring-[#171D50]/20 resize-none`}
+                    style={{ fontSize: `${fontSize}px` }}
+                  />
                 </div>
-
-                <textarea
-                  value={sandboxText}
-                  onChange={(e) => setSandboxText(e.target.value)}
-                  rows={5}
-                  aria-label="Reader typography preview text"
-                  className={`w-full p-5 rounded-2xl border ${themeStyles.border} ${themeStyles.card} ${themeStyles.text} ${fontClass} leading-[1.8] focus:outline-none focus:ring-2 focus:ring-[#171D50]/20 resize-none`}
-                  style={{ fontSize: `${fontSize}px` }}
-                />
               </div>
             )}
           </div>

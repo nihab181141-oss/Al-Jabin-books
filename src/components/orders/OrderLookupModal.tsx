@@ -20,9 +20,16 @@ import { Order, EntitledDownload } from '../../types';
 interface OrderLookupModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenAuth?: () => void;
+  onOpenPublish?: () => void;
 }
 
-export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onClose }) => {
+export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({
+  isOpen,
+  onClose,
+  onOpenAuth,
+  onOpenPublish,
+}) => {
   const {
     lookupOrder,
     currentUser,
@@ -96,7 +103,7 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
       } else if (isSignUp) {
         if (!authEmail.trim() || !authPassword) throw new Error('Email and password required.');
         if (authPassword.length < 6) throw new Error('Password must be at least 6 characters.');
-        await registerWithEmail(authEmail.trim(), authPassword, authName.trim() || undefined);
+        await registerWithEmail(authEmail.trim(), authPassword, authName.trim() ? { displayName: authName.trim() } : undefined);
         setActiveTab('library');
       } else {
         if (!authEmail.trim() || !authPassword) throw new Error('Email and password required.');
@@ -134,10 +141,10 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-[#E8E9F0] px-6 bg-[#FAFAFC] text-xs">
+        <div className="flex border-b border-[#E8E9F0] px-4 sm:px-6 bg-[#FAFAFC] text-xs overflow-x-auto">
           <button
             onClick={() => setActiveTab('lookup')}
-            className={`py-3 px-4 font-medium border-b-2 transition-colors cursor-pointer ${
+            className={`py-3 px-3.5 sm:px-4 font-medium border-b-2 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               activeTab === 'lookup'
                 ? 'border-[#171D50] text-[#171D50]'
                 : 'border-transparent text-[#686B78] hover:text-[#171923]'
@@ -148,7 +155,7 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
 
           <button
             onClick={() => setActiveTab('library')}
-            className={`py-3 px-4 font-medium border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 ${
+            className={`py-3 px-3.5 sm:px-4 font-medium border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
               activeTab === 'library'
                 ? 'border-[#171D50] text-[#171D50]'
                 : 'border-transparent text-[#686B78] hover:text-[#171923]'
@@ -157,7 +164,7 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
             <BookOpen className="w-3.5 h-3.5" />
             <span>My Digital Library</span>
             {userLibrary.length > 0 && (
-              <span className="bg-[#171D50] text-white text-[10px] px-1.5 py-0.2 rounded-full">
+              <span className="bg-[#171D50] text-white text-[10px] px-1.5 py-0.2 rounded-full tabular-nums">
                 {userLibrary.length}
               </span>
             )}
@@ -165,7 +172,7 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
 
           <button
             onClick={() => setActiveTab('auth')}
-            className={`py-3 px-4 font-medium border-b-2 transition-colors cursor-pointer ml-auto flex items-center gap-1.5 ${
+            className={`py-3 px-3.5 sm:px-4 font-medium border-b-2 transition-colors cursor-pointer ml-auto flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
               activeTab === 'auth'
                 ? 'border-[#171D50] text-[#171D50]'
                 : 'border-transparent text-[#686B78] hover:text-[#171923]'
@@ -178,12 +185,12 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
 
         {/* Tab 1: Order Lookup */}
         {activeTab === 'lookup' && (
-          <div className="p-6 sm:p-8 overflow-y-auto space-y-6 flex-1 text-left">
+          <div className="p-5 sm:p-8 overflow-y-auto space-y-6 flex-1 text-left">
             <form onSubmit={handleSearch} className="space-y-3">
               <label className="block text-xs font-medium text-[#171923]">
                 Enter Order ID
               </label>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   placeholder="Enter your Order ID"
@@ -192,12 +199,12 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
                     setQuery(e.target.value);
                     if (lookupError) setLookupError(null);
                   }}
-                  className="flex-1 px-4 py-2.5 text-xs font-mono uppercase bg-white border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none rounded-full"
+                  className="flex-1 min-h-[44px] px-4 py-2.5 text-xs font-mono uppercase bg-white border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none rounded-full"
                 />
                 <button
                   type="submit"
                   disabled={isSearching}
-                  className="px-6 py-2.5 bg-[#171D50] text-white text-xs font-medium uppercase tracking-wider hover:bg-[#0f1338] transition-colors rounded-full cursor-pointer shadow-xs"
+                  className="min-h-[44px] px-6 py-2.5 bg-[#171D50] text-white text-xs font-medium uppercase tracking-wider hover:bg-[#0f1338] transition-colors rounded-full cursor-pointer shadow-xs whitespace-nowrap"
                 >
                   {isSearching ? 'Searching...' : 'Lookup'}
                 </button>
@@ -215,17 +222,15 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
             )}
 
             {!searchedOrder && !lookupError && (
-              <div className="bg-[#FAF7F0] border border-[#EBE6DF] rounded-2xl p-6 flex flex-col sm:flex-row items-center gap-5">
-                <div className="w-32 h-32 shrink-0 bg-[#E1EEFF] rounded-2xl p-2 flex items-center justify-center">
-                  <img
-                    src="/assets/aistudio/Hotel_Booking-cuate_3b3357b3.svg"
-                    alt="Mobile order verification illustration"
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-                <div className="space-y-1.5 text-center sm:text-left">
-                  <h4 className="font-editorial text-base text-[#171923]">Instant Order Verification</h4>
-                  <p className="text-xs text-[#686B78] font-light leading-relaxed">
+              <div className="pt-4 border-t border-[#E8E9F0] flex flex-col sm:flex-row items-center gap-6">
+                <img
+                  src="/assets/aistudio/Hotel_Booking-cuate_3b3357b3.svg"
+                  alt="Mobile order verification illustration"
+                  className="w-36 h-36 sm:w-40 sm:h-40 shrink-0 object-contain select-none"
+                />
+                <div className="space-y-2 text-center sm:text-left">
+                  <h4 className="font-editorial text-lg text-[#171923]">Instant Order Verification</h4>
+                  <p className="text-xs sm:text-sm text-[#686B78] font-light leading-relaxed">
                     Enter the Order ID from your confirmation receipt to verify payment status and retrieve your DRM-free ebook files.
                   </p>
                 </div>
@@ -295,40 +300,40 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
 
         {/* Tab 2: Customer Library */}
         {activeTab === 'library' && (
-          <div className="p-6 sm:p-8 overflow-y-auto space-y-6 flex-1 text-left">
+          <div className="p-5 sm:p-8 overflow-y-auto space-y-6 flex-1 text-left">
             {!currentUser ? (
-              <div className="text-center py-8 space-y-4">
-                <div className="w-40 h-40 mx-auto bg-[#FFE2DB]/65 rounded-3xl p-3 flex items-center justify-center">
-                  <img
-                    src="/assets/aistudio/Bookmarks-pana_fc1b81f4.svg"
-                    alt="Digital reader library illustration"
-                    className="w-full h-full object-contain"
-                  />
+              <div className="py-4 flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
+                <img
+                  src="/assets/aistudio/Bookmarks-pana_fc1b81f4.svg"
+                  alt="Digital reader library illustration"
+                  className="w-44 h-44 shrink-0 object-contain select-none"
+                />
+                <div className="space-y-3 text-center sm:text-left">
+                  <h4 className="font-editorial text-xl text-[#171923]">Sign in to access your digital library</h4>
+                  <p className="text-xs sm:text-sm text-[#686B78] font-light leading-relaxed">
+                    All your purchased DRM-free ebooks are safely stored and permanently accessible under your verified customer account.
+                  </p>
+                  <button
+                    onClick={() => setActiveTab('auth')}
+                    className="min-h-[42px] px-6 py-2.5 bg-[#171D50] text-white text-xs font-semibold rounded-full hover:bg-[#0f1338] transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    Sign In / Create Account
+                  </button>
                 </div>
-                <h4 className="font-editorial text-xl text-[#171923]">Sign in to access your digital library</h4>
-                <p className="text-xs text-[#686B78] max-w-sm mx-auto font-light">
-                  All your purchased DRM-free ebooks are safely stored and permanently accessible under your verified customer account.
-                </p>
-                <button
-                  onClick={() => setActiveTab('auth')}
-                  className="px-6 py-2.5 bg-[#171D50] text-white text-xs font-semibold rounded-full hover:bg-[#0f1338] transition-colors cursor-pointer"
-                >
-                  Sign In / Create Account
-                </button>
               </div>
             ) : userLibrary.length === 0 ? (
-              <div className="text-center py-8 px-6 space-y-4 bg-[#FAF7F0] border border-[#EBE6DF] rounded-2xl">
-                <div className="w-36 h-36 mx-auto bg-[#FFE2DB]/65 rounded-2xl p-3 flex items-center justify-center">
-                  <img
-                    src="/assets/aistudio/Bookmarks-pana_fc1b81f4.svg"
-                    alt="Empty reader shelf illustration"
-                    className="w-full h-full object-contain"
-                  />
+              <div className="py-4 flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
+                <img
+                  src="/assets/aistudio/Bookmarks-pana_fc1b81f4.svg"
+                  alt="Empty reader shelf illustration"
+                  className="w-40 h-40 shrink-0 object-contain select-none"
+                />
+                <div className="space-y-2 text-center sm:text-left">
+                  <h4 className="font-editorial text-xl text-[#171923]">No Ebooks in Library Yet</h4>
+                  <p className="text-xs sm:text-sm text-[#686B78] font-light leading-relaxed">
+                    When you complete a purchase, your DRM-free editions will instantly appear here with permanent download access.
+                  </p>
                 </div>
-                <h4 className="font-editorial text-lg text-[#171923]">No Ebooks in Library Yet</h4>
-                <p className="text-xs text-[#686B78] font-light max-w-sm mx-auto">
-                  When you complete a purchase, your DRM-free editions will instantly appear here with permanent download access.
-                </p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -400,16 +405,48 @@ export const OrderLookupModal: React.FC<OrderLookupModalProps> = ({ isOpen, onCl
                   </button>
                 </div>
 
-                <div className="p-4 border border-[#E8E9F0] rounded-2xl text-xs space-y-2">
-                  <div className="font-semibold text-[#171923]">Account Privileges</div>
+                <div className="p-4 border border-[#E8E9F0] rounded-2xl text-xs space-y-3">
+                  <div className="font-semibold text-[#171923]">Account & Author Studio</div>
                   <p className="text-[#686B78] font-light leading-relaxed">
-                    Your account grants synchronized digital library access across devices. DRM-free downloads remain bound to your verified reader credentials.
+                    Edit your optional author details, view your published ebooks, or release a new digital volume from your dedicated profile page.
                   </p>
+                  <div className="flex flex-wrap gap-2">
+                    {onOpenAuth && (
+                      <button
+                        type="button"
+                        onClick={onOpenAuth}
+                        className="px-4 py-2 bg-[#F5F4EF] hover:bg-[#EAE8E0] text-[#171923] font-semibold rounded-full transition-colors cursor-pointer"
+                      >
+                        Manage Profile
+                      </button>
+                    )}
+                    {onOpenPublish && (
+                      <button
+                        type="button"
+                        onClick={onOpenPublish}
+                        className="px-4 py-2 bg-[#171D50] hover:bg-[#0f1338] text-white font-semibold rounded-full transition-colors cursor-pointer"
+                      >
+                        Publish an Ebook
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
               /* Sign In / Sign Up Form */
               <div className="max-w-md mx-auto space-y-5">
+                {onOpenAuth && (
+                  <div className="p-3 bg-[#FAF7F0] border border-[#E6DFCF] rounded-2xl flex items-center justify-between gap-3 text-xs">
+                    <span className="text-[#575A66]">Want full profile & Google Sign-In?</span>
+                    <button
+                      type="button"
+                      onClick={onOpenAuth}
+                      className="px-3.5 py-1.5 bg-[#171D50] text-white font-semibold rounded-full hover:bg-[#0f1338] cursor-pointer shrink-0"
+                    >
+                      Open Sign-In Page
+                    </button>
+                  </div>
+                )}
                 <div className="text-center space-y-1">
                   <h4 className="font-editorial text-2xl text-[#171923]">
                     {isReset ? 'Reset Your Password' : isSignUp ? 'Create Reader Account' : 'Welcome Back'}

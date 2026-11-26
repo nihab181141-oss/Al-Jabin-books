@@ -3,7 +3,7 @@ import { useStore } from '../../context/StoreContext';
 import { X, BookOpen, ChevronLeft, ChevronRight, ShoppingBag } from 'lucide-react';
 
 export const SampleReaderModal: React.FC = () => {
-  const { previewSampleBook, setPreviewSampleBook, addToCart } = useStore();
+  const { previewSampleBook, setPreviewSampleBook, addToCart, logoIconColor } = useStore();
   const [activeChapterIndex, setActiveChapterIndex] = useState(0);
 
   if (!previewSampleBook) return null;
@@ -34,11 +34,23 @@ export const SampleReaderModal: React.FC = () => {
           </button>
         </div>
 
-        {/* Reader Canvas */}
-        <div className="overflow-y-auto p-8 sm:p-14 bg-white flex-1 max-w-2xl mx-auto w-full shadow-xs my-4 rounded-2xl border border-[#E8E9F0]">
+        {/* Reader Canvas with subtle watermark */}
+        <div className="relative overflow-y-auto p-8 sm:p-14 bg-white flex-1 max-w-2xl mx-auto w-full shadow-xs my-4 rounded-2xl border border-[#E8E9F0]">
+          <img
+            src={logoIconColor}
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none select-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 opacity-[0.04]"
+          />
           
           {/* Header in Reader */}
-          <div className="text-center pb-8 border-b border-[#E8E9F0] mb-8">
+          <div className="relative text-center pb-8 border-b border-[#E8E9F0] mb-8">
+            <img
+              src={logoIconColor}
+              alt=""
+              aria-hidden="true"
+              className="w-6 h-6 mx-auto mb-2.5 opacity-80"
+            />
             <div className="text-xs uppercase tracking-[0.2em] text-[#686B78] mb-2">
               Al Jabin Publications · Official Excerpt
             </div>

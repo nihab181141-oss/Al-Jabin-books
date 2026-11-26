@@ -20,11 +20,14 @@ export const CheckoutModal: React.FC = () => {
     activeCoupon,
     createOrder,
     currentUser,
+    userProfile,
   } = useStore();
 
-  const [customerName, setCustomerName] = useState(currentUser?.displayName || '');
+  const [customerName, setCustomerName] = useState(
+    userProfile?.displayName || currentUser?.displayName || ''
+  );
   const [customerEmail, setCustomerEmail] = useState(currentUser?.email || '');
-  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerPhone, setCustomerPhone] = useState(userProfile?.phone || '');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bkash');
   const [transactionId, setTransactionId] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -58,7 +61,7 @@ export const CheckoutModal: React.FC = () => {
       return;
     }
 
-    if (['bkash', 'nagad', 'rocket'].includes(paymentMethod) && !transactionId.trim()) {
+    if (finalTotal > 0 && ['bkash', 'nagad', 'rocket'].includes(paymentMethod) && !transactionId.trim()) {
       setErrorMsg(`Please enter the ${paymentMethod.toUpperCase()} transaction ID (TrxID) from your payment receipt.`);
       return;
     }
@@ -182,6 +185,7 @@ export const CheckoutModal: React.FC = () => {
             </div>
 
             {/* Payment Method Selection */}
+            {finalTotal > 0 && (
             <div className="space-y-4 pt-4 border-t border-[#E8E9F0]">
               <h4 className="text-xs uppercase tracking-wider text-[#686B78] font-semibold">
                 2. Select Payment Method
@@ -300,6 +304,7 @@ export const CheckoutModal: React.FC = () => {
                 </div>
               )}
             </div>
+            )}
 
             {/* Terms Agreement */}
             <div className="pt-4 border-t border-[#E8E9F0] space-y-3">

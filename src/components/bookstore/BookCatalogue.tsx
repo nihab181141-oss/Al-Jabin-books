@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { BookCategory } from '../../types';
 import { useStore } from '../../context/StoreContext';
 import { BookCard } from './BookCard';
-import { Search, BookMarked, ArrowRight } from 'lucide-react';
+import { Search, ArrowRight, PenTool } from 'lucide-react';
 
 const CATEGORIES: BookCategory[] = [
   'All Books',
@@ -14,9 +14,13 @@ const CATEGORIES: BookCategory[] = [
 
 interface BookCatalogueProps {
   onOpenReadingStudio?: () => void;
+  onOpenPublish?: () => void;
 }
 
-export const BookCatalogue: React.FC<BookCatalogueProps> = ({ onOpenReadingStudio }) => {
+export const BookCatalogue: React.FC<BookCatalogueProps> = ({
+  onOpenReadingStudio,
+  onOpenPublish,
+}) => {
   const { books } = useStore();
   const [selectedCategory, setSelectedCategory] = useState<BookCategory>('All Books');
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,22 +50,21 @@ export const BookCatalogue: React.FC<BookCatalogueProps> = ({ onOpenReadingStudi
   }, [books, selectedCategory, searchQuery, sortBy]);
 
   return (
-    <section id="bookstore" className="w-full bg-white py-20 md:py-24 rounded-t-[36px] border-t border-black/[0.04] relative">
+    <section id="bookstore" className="w-full bg-white py-16 sm:py-20 lg:py-24 border-t border-black/[0.06] relative">
       <div id="featured-collection" className="absolute -top-20" />
-      {/* Centered Content Container */}
-      <div className="max-w-[1160px] mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Section Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8 sm:mb-10">
           <div className="space-y-2 max-w-xl">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-[#686B78] font-semibold">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-[#686B78] font-semibold">
               The Digital Publishing Shelf
             </div>
             <h2 className="text-3xl sm:text-4xl font-bold tracking-[-0.03em] text-[#171923]">
               Editorial Catalogue
             </h2>
           </div>
-          <p className="text-xs sm:text-sm text-[#686B78] font-normal max-w-md leading-relaxed">
+          <p className="text-xs sm:text-sm text-[#575A66] font-normal max-w-md leading-relaxed">
             Every edition is published in DRM-free universal formats for instant download and permanent ownership.
           </p>
         </div>
@@ -69,15 +72,15 @@ export const BookCatalogue: React.FC<BookCatalogueProps> = ({ onOpenReadingStudi
         {/* Filter Segmented Bar & Search Controls */}
         <div className="mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           
-          {/* Segmented Category Pill Track (Apple/Dribbble style) */}
-          <div className="inline-flex flex-wrap items-center gap-1 p-1.5 bg-[#F5F4EF] rounded-full">
+          {/* Horizontal Scrollable Category Track on Mobile, Inline on Desktop */}
+          <div className="flex items-center gap-1 p-1 bg-[#F5F4EF] rounded-full overflow-x-auto max-w-full">
             {CATEGORIES.map((cat) => {
               const active = selectedCategory === cat;
               return (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-4 py-2 text-xs font-semibold tracking-tight transition-all cursor-pointer rounded-full ${
+                  className={`px-4 py-2 min-h-[38px] text-xs font-semibold tracking-tight transition-all cursor-pointer rounded-full whitespace-nowrap shrink-0 ${
                     active
                       ? 'bg-[#171D50] text-white shadow-xs'
                       : 'text-[#686B78] hover:text-[#171923]'
@@ -90,20 +93,21 @@ export const BookCatalogue: React.FC<BookCatalogueProps> = ({ onOpenReadingStudi
           </div>
 
           {/* Search & Sort Controls */}
-          <div className="flex items-center gap-2.5">
-            <div className="relative flex-1 md:w-64">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            <div className="relative flex-1 lg:w-64">
               <Search className="w-4 h-4 text-[#686B78] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 placeholder="Search titles, authors..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-8 py-2.5 text-xs text-[#171923] bg-[#F5F4EF] border border-transparent focus:bg-white focus:border-[#171D50]/30 focus:outline-none transition-all rounded-full"
+                className="w-full min-h-[42px] pl-10 pr-8 py-2 text-xs text-[#171923] bg-[#F5F4EF] border border-transparent focus:bg-white focus:border-[#171D50]/30 focus:outline-none transition-all rounded-full"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
                   className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-[#686B78] hover:text-[#171923] cursor-pointer"
+                  aria-label="Clear search"
                 >
                   ×
                 </button>
@@ -113,7 +117,8 @@ export const BookCatalogue: React.FC<BookCatalogueProps> = ({ onOpenReadingStudi
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="px-4 py-2.5 text-xs font-medium text-[#171923] bg-[#F5F4EF] border border-transparent focus:border-[#171D50]/30 focus:outline-none cursor-pointer rounded-full"
+              aria-label="Sort books"
+              className="min-h-[42px] px-4 py-2 text-xs font-medium text-[#171923] bg-[#F5F4EF] border border-transparent focus:border-[#171D50]/30 focus:outline-none cursor-pointer rounded-full"
             >
               <option value="featured">Featured First</option>
               <option value="newest">Newest Editions</option>
@@ -124,7 +129,7 @@ export const BookCatalogue: React.FC<BookCatalogueProps> = ({ onOpenReadingStudi
         </div>
 
         {/* Results Metadata */}
-        <div className="flex items-center justify-between text-xs text-[#686B78] mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#686B78] mb-6 pb-4 border-b border-black/[0.06]">
           <div className="tabular-nums">
             Showing <span className="font-semibold text-[#171923]">{filteredBooks.length}</span> active {filteredBooks.length === 1 ? 'title' : 'titles'}
             {selectedCategory !== 'All Books' && ` · ${selectedCategory}`}
@@ -144,63 +149,74 @@ export const BookCatalogue: React.FC<BookCatalogueProps> = ({ onOpenReadingStudi
             ))}
           </div>
         ) : books.length === 0 ? (
-          /* Clean Tactile Curation Card (Zero Fake Books) */
-          <div className="bg-[#F5F4EF] rounded-[30px] p-8 sm:p-12 max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
-            <div className="md:col-span-5 bg-[#FFF2C6] rounded-2xl p-4 flex items-center justify-center aspect-[3/2] shadow-2xs">
+          /* Open Side-by-Side Curation Spread (Illustration sits freely without nested box) */
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12 items-center py-6 sm:py-10">
+            <div className="md:col-span-6 flex justify-center">
               <img
                 src="/assets/aistudio/Bookshop-cuate_9a8c56b6.svg"
                 alt="Curated digital bookshop shelves illustration"
-                className="w-full h-full object-contain"
+                className="w-full max-w-[340px] sm:max-w-[420px] lg:max-w-[460px] h-auto object-contain select-none"
               />
             </div>
-            <div className="md:col-span-7 text-center md:text-left space-y-3">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-[#784A00] font-semibold">
+            <div className="md:col-span-6 text-center md:text-left space-y-4">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-[#686B78] font-semibold">
                 Curated Release Queue
               </div>
               <h3 className="text-2xl sm:text-3xl font-bold tracking-[-0.02em] text-[#171923]">
                 Catalogue Curation in Progress
               </h3>
-              <p className="text-xs sm:text-sm text-[#575A66] font-normal leading-relaxed max-w-md mx-auto md:mx-0">
+              <p className="text-sm text-[#575A66] font-normal leading-relaxed max-w-lg mx-auto md:mx-0">
                 Our inaugural publications are undergoing final editorial typesetting. Experience our digital reading architecture live in the Reading Studio while titles prepare for release.
               </p>
-              {onOpenReadingStudio && (
-                <div className="pt-2">
+              <div className="pt-2 flex flex-wrap items-center justify-center md:justify-start gap-3">
+                {onOpenPublish && (
+                  <button
+                    onClick={onOpenPublish}
+                    className="inline-flex items-center justify-center gap-2 min-h-[44px] px-6 py-3 bg-[#171D50] text-white text-xs sm:text-sm font-semibold rounded-full hover:bg-[#0f1338] transition-all cursor-pointer shadow-xs whitespace-nowrap"
+                  >
+                    <PenTool className="w-4 h-4" />
+                    <span>Publish Your Ebook</span>
+                  </button>
+                )}
+                {onOpenReadingStudio && (
                   <button
                     onClick={onOpenReadingStudio}
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-[#171D50] text-white text-xs font-semibold rounded-full hover:bg-[#0f1338] transition-all cursor-pointer shadow-sm"
+                    className="inline-flex items-center justify-center gap-2 min-h-[44px] px-6 py-3 bg-[#F5F4EF] text-[#171923] border border-black/[0.08] text-xs sm:text-sm font-semibold rounded-full hover:bg-[#EAE8E0] transition-all cursor-pointer whitespace-nowrap"
                   >
-                    <span>Open Reading Specimen Studio</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    <span>Open Reading Studio</span>
+                    <ArrowRight className="w-4 h-4" />
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         ) : (
-          /* Filter Mismatch State */
-          <div className="text-center py-12 px-6 bg-[#F5F4EF] rounded-[30px] max-w-xl mx-auto">
-            <div className="w-48 h-32 mx-auto mb-4 bg-white rounded-2xl p-3 flex items-center justify-center shadow-2xs">
+          /* Filter Mismatch State (Side-by-Side & Unboxed) */
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center py-8 max-w-4xl mx-auto">
+            <div className="md:col-span-5 flex justify-center">
               <img
                 src="/assets/aistudio/Bookshop-cuate_9a8c56b6.svg"
                 alt="Bookshop shelves illustration"
-                className="w-full h-full object-contain"
+                className="w-full max-w-[280px] h-auto object-contain select-none"
               />
             </div>
-            <h3 className="text-xl font-bold tracking-tight text-[#171923] mb-1">
-              No matching publications found
-            </h3>
-            <p className="text-xs text-[#686B78] max-w-sm mx-auto mb-5">
-              We couldn't find any books matching your current filters. Try resetting the category or search keyword.
-            </p>
-            <button
-              onClick={() => {
-                setSelectedCategory('All Books');
-                setSearchQuery('');
-              }}
-              className="px-6 py-2.5 bg-[#171D50] text-white text-xs font-semibold hover:bg-[#0f1338] transition-colors rounded-full cursor-pointer"
-            >
-              Reset Filters
-            </button>
+            <div className="md:col-span-7 text-center md:text-left space-y-3">
+              <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-[#171923]">
+                No matching publications found
+              </h3>
+              <p className="text-xs sm:text-sm text-[#686B78] max-w-md mx-auto md:mx-0 leading-relaxed">
+                We couldn't find any books matching your current filters. Try resetting the category or search keyword.
+              </p>
+              <button
+                onClick={() => {
+                  setSelectedCategory('All Books');
+                  setSearchQuery('');
+                }}
+                className="min-h-[42px] px-6 py-2.5 bg-[#171D50] text-white text-xs font-semibold hover:bg-[#0f1338] transition-colors rounded-full cursor-pointer whitespace-nowrap"
+              >
+                Reset Filters
+              </button>
+            </div>
           </div>
         )}
 

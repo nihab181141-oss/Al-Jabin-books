@@ -1,4 +1,4 @@
-export type BookCategory = 
+export type BookCategory =
   | 'All Books'
   | 'Personal Growth'
   | 'Mindset'
@@ -13,11 +13,12 @@ export interface SampleChapter {
 
 export interface Book {
   id: string;
+  ownerId?: string;
   title: string;
   subtitle?: string;
   author: string;
   category: 'Personal Growth' | 'Mindset' | 'Productivity' | 'Fiction';
-  price: number; // in BDT
+  price: number; // in BDT (0 = free edition)
   priceUSD?: number;
   originalPrice?: number;
   discountPercentage?: number;
@@ -34,7 +35,27 @@ export interface Book {
   description: string;
   keyTakeaways: string[];
   sampleChapters: SampleChapter[];
+  manuscriptContent?: string;
   downloadFileKey: string;
+  createdAt?: string;
+}
+
+export interface PublishBookInput {
+  title: string;
+  subtitle?: string;
+  author: string;
+  category: 'Personal Growth' | 'Mindset' | 'Productivity' | 'Fiction';
+  price: number;
+  format: string;
+  pages: number;
+  language: string;
+  isbn?: string;
+  description: string;
+  keyTakeaways: string[];
+  sampleChapterTitle?: string;
+  sampleExcerpt?: string;
+  manuscriptContent?: string;
+  coverImage?: string;
 }
 
 export interface CartItem {
@@ -100,10 +121,19 @@ export interface Subscriber {
   source: string;
 }
 
-export interface CustomerProfile {
+export interface OptionalProfileFields {
+  displayName?: string;
+  penName?: string;
+  phone?: string;
+  location?: string;
+  bio?: string;
+  website?: string;
+}
+
+export interface CustomerProfile extends OptionalProfileFields {
   uid: string;
   email: string;
-  displayName?: string;
   role: 'customer';
   createdAt: string;
+  updatedAt?: string;
 }
