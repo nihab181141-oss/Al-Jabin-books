@@ -28,7 +28,7 @@ interface AuthorDashboardProps {
   onOpenAuth: (mode?: 'signin' | 'signup', reason?: string) => void;
 }
 
-type DashboardTab = 'books' | 'sales' | 'profile';
+type DashboardTab = 'books' | 'sales' | 'orders' | 'profile';
 
 export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
   onBackToStore,
@@ -47,9 +47,13 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
     updateUserProfile,
     logoutUser,
     logoIconColor,
+    userOrders,
+    refreshUserOrders,
+    showToast,
   } = useStore();
 
   const [activeTab, setActiveTab] = useState<DashboardTab>('books');
+  const [previewingBook, setPreviewingBook] = useState<Book | null>(null);
   const [salesData, setSalesData] = useState<AuthorSalesData>({
     summary: {
       totalBooks: 0,
@@ -122,6 +126,12 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
       loadStats();
     }
   }, [currentUser, myPublishedBooks.length, loadStats]);
+
+  useEffect(() => {
+    if (activeTab === 'orders' && currentUser) {
+      refreshUserOrders();
+    }
+  }, [activeTab, currentUser, refreshUserOrders]);
 
   const openEditModal = (book: Book) => {
     setEditingBook(book);
@@ -418,6 +428,19 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
 
             <button
               type="button"
+              onClick={() => setActiveTab('orders')}
+              className={`min-h-[48px] px-3 sm:px-4 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+                activeTab === 'orders'
+                  ? 'border-[#171D50] text-[#171D50]'
+                  : 'border-transparent text-[#686B78] hover:text-[#171923]'
+              }`}
+            >
+              <ShoppingBag className="w-4 h-4" />
+              <span>Order History ({userOrders.length})</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveTab('profile')}
               className={`min-h-[48px] px-3 sm:px-4 text-xs sm:text-sm font-semibold border-b-2 transition-colors whitespace-nowrap cursor-pointer flex items-center gap-2 ${
                 activeTab === 'profile'
@@ -610,6 +633,51 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
           {/* TAB 2: SALES STATISTICS */}
           {activeTab === 'sales' && (
             <div className="p-4 sm:p-6 space-y-8">
+              {/* Visual Earnings & Sales Performance Chart */}
+              <div className="p-6 bg-[#FAFAFC] border border-black/[0.08] rounded-2xl space-y-4 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-extrabold text-[#171923]">
+                      Revenue & Sales Performance Overview
+                    </h3>
+                    <p className="text-xs text-[#686B78]">
+                      Visual breakdown of total gross earnings across your published volumes.
+                    </p>
+                  </div>
+                  <div className="text-right font-mono tabular-nums">
+                    <div className="text-xl font-bold text-[#171D50]">৳{salesData.summary.totalRevenueBDT.toLocaleString()}</div>
+                    <div className="text-[10px] text-[#686B78] uppercase tracking-wider">Gross Earnings</div>
+                  </div>
+                </div>
+
+                {salesData.perBookStats.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-[#686B78]">
+                    No sales data available yet.
+                  </div>
+                ) : (
+                  <div className="space-y-3.5 pt-2">
+                    {salesData.perBookStats.map((item) => {
+                      const maxRev = Math.max(1, ...salesData.perBookStats.map((s) => s.revenueBDT));
+                      const pct = Math.round((item.revenueBDT / maxRev) * 100);
+                      return (
+                        <div key={item.bookId} className="space-y-1">
+                          <div className="flex justify-between text-xs font-medium text-[#171923]">
+                            <span className="truncate max-w-[280px]">{item.title}</span>
+                            <span className="font-mono tabular-nums font-semibold">৳{item.revenueBDT.toLocaleString()} ({item.unitsSold} sold)</span>
+                          </div>
+                          <div className="h-3.5 w-full bg-white rounded-full overflow-hidden border border-black/[0.08] shadow-2xs">
+                            <div
+                              className="h-full bg-gradient-to-r from-[#171D50] to-[#2a347d] rounded-full transition-all duration-500"
+                              style={{ width: `${Math.max(6, pct)}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               {/* Per-Book Sales Performance */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -745,7 +813,123 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
             </div>
           )}
 
-          {/* TAB 3: PROFILE SETTINGS */}
+          {/* TAB 3: ORDER HISTORY & PURCHASES */}
+          {activeTab === 'orders' && (
+            <div className="p-4 sm:p-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-extrabold tracking-[-0.02em] text-[#171923]">
+                    Your Past Purchases & Ebook Library
+                  </h2>
+                  <p className="text-xs text-[#686B78] mt-0.5">
+                    View past orders and download your previously bought DRM-free PDF books instantly.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={refreshUserOrders}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-black/[0.08] hover:border-[#171D50] text-xs font-semibold rounded-full transition-colors cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Refresh Orders</span>
+                </button>
+              </div>
+
+              {userOrders.length === 0 ? (
+                <div className="py-12 px-4 text-center space-y-3 border border-dashed border-black/[0.12] rounded-2xl bg-[#FAFAFC]">
+                  <div className="w-11 h-11 mx-auto rounded-full bg-white border border-black/[0.08] flex items-center justify-center text-[#171D50]">
+                    <ShoppingBag className="w-5 h-5" />
+                  </div>
+                  <div className="space-y-1 max-w-md mx-auto">
+                    <h3 className="text-base font-bold text-[#171923]">No Purchase History Yet</h3>
+                    <p className="text-xs text-[#575A66] leading-relaxed">
+                      When you claim free editions or purchase paid books from the bookstore, your past orders and instant download links appear here.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {userOrders.map((ord) => (
+                    <div
+                      key={ord.id}
+                      className="p-5 bg-white border border-black/[0.08] rounded-2xl space-y-4 shadow-2xs"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-black/[0.08]">
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wider text-[#686B78]">
+                            Order Reference: <span className="font-mono font-bold text-[#171D50]">{ord.orderNumber || ord.id}</span>
+                          </div>
+                          <div className="text-[11px] text-[#686B78] mt-0.5">
+                            Placed on {new Date(ord.createdAt).toLocaleDateString()} · {ord.customerEmail}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase ${
+                            ord.paymentStatus === 'verified'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {ord.paymentStatus === 'verified' ? '✓ Paid & Verified' : ord.paymentStatus}
+                          </span>
+                          <span className="font-mono font-bold text-sm text-[#171923]">
+                            ৳{ord.total}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2.5">
+                        <div className="text-xs font-medium text-[#171923]">Purchased Publications:</div>
+                        {ord.items.map((item, idx) => {
+                          const dl = ord.downloads?.find(
+                            (d) => d.productId === item.bookId || d.productTitle === item.title
+                          ) || ord.downloads?.[idx];
+                          return (
+                            <div
+                              key={idx}
+                              className="p-3.5 bg-[#FAFAFC] border border-black/[0.06] rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                            >
+                              <div>
+                                <div className="font-editorial text-sm font-medium text-[#171923]">{item.title}</div>
+                                <div className="text-[11px] text-[#686B78] mt-0.5">
+                                  Quantity: {item.quantity} · Format: {item.format || 'PDF & EPUB'}
+                                </div>
+                              </div>
+
+                              {dl?.downloadUrl ? (
+                                <a
+                                  href={dl.downloadUrl}
+                                  download
+                                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-[#171D50] hover:bg-[#0f1338] text-white text-xs font-medium rounded-full transition-colors shrink-0 cursor-pointer shadow-xs"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>Download PDF Now</span>
+                                </a>
+                              ) : ord.paymentStatus === 'verified' ? (
+                                <a
+                                  href={`/api/downloads/${ord.id}`}
+                                  download
+                                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-[#171D50] hover:bg-[#0f1338] text-white text-xs font-medium rounded-full transition-colors shrink-0 cursor-pointer shadow-xs"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>Download PDF</span>
+                                </a>
+                              ) : (
+                                <span className="text-[11px] text-amber-700 italic">
+                                  Awaiting payment verification
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 4: PROFILE SETTINGS */}
           {activeTab === 'profile' && (
             <div className="p-4 sm:p-6">
               <div className="max-w-2xl space-y-6">
@@ -1048,6 +1232,83 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Read-Only PDF Previewer Modal */}
+      {previewingBook && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-black/[0.08] rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto text-left">
+            <div className="flex items-center justify-between pb-3 border-b border-black/[0.08]">
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-[#686B78] font-semibold">
+                  Al Jabin Publications · Read-Only PDF & Manuscript Verifier
+                </div>
+                <h3 className="text-xl font-extrabold text-[#171923] font-editorial">
+                  {previewingBook.title}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewingBook(null)}
+                className="p-2 text-[#686B78] hover:text-[#171923] rounded-full hover:bg-black/5 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-4 p-4 bg-[#FAFAFC] border border-black/[0.06] rounded-2xl">
+              <img
+                src={previewingBook.coverImage}
+                alt={previewingBook.title}
+                className="w-16 h-22 object-cover rounded-lg border border-black/[0.08] shrink-0"
+              />
+              <div className="space-y-1 text-xs">
+                <div className="font-semibold text-[#171923]">{previewingBook.author}</div>
+                <div className="text-[#686B78]">
+                  Category: {previewingBook.category} · Format: {previewingBook.format} · Pages: {previewingBook.pages}
+                </div>
+                <div className="text-emerald-700 font-medium">
+                  ✓ Verified Vault Storage & PDF Manuscript Ready
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="text-xs uppercase tracking-wider font-semibold text-[#171923]">
+                Manuscript & Sample Chapters Verification
+              </h4>
+              <div className="p-4 bg-[#FAF7F0] border border-[#E8E2D8] rounded-2xl text-xs space-y-3 max-h-64 overflow-y-auto font-light leading-relaxed text-[#171923]">
+                {previewingBook.manuscriptContent ? (
+                  <p className="whitespace-pre-wrap">{previewingBook.manuscriptContent}</p>
+                ) : previewingBook.sampleChapters && previewingBook.sampleChapters.length > 0 ? (
+                  previewingBook.sampleChapters.map((ch, idx) => (
+                    <div key={idx} className="space-y-1">
+                      <div className="font-semibold">{ch.title}</div>
+                      <p>{ch.excerpt}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-[#686B78] italic">
+                    Standard publication vault record verified. Formatted PDF edition generated on demand for readers upon purchase or free claim.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-black/[0.08]">
+              <span className="text-[11px] text-[#686B78]">
+                ISBN: {previewingBook.isbn}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPreviewingBook(null)}
+                className="min-h-[40px] px-6 py-2 bg-[#171D50] text-white text-xs font-semibold rounded-full hover:bg-[#0f1338] cursor-pointer"
+              >
+                Close Preview
+              </button>
+            </div>
           </div>
         </div>
       )}

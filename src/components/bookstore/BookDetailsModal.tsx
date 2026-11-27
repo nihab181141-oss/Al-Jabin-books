@@ -4,7 +4,7 @@ import { X, ShoppingBag, BookOpen, Check, ShieldCheck, Download, Sparkles } from
 import { Book } from '../../types';
 
 export const BookDetailsModal: React.FC = () => {
-  const { selectedBook, setSelectedBook, addToCart, quickAcquireFreeBook, setPreviewSampleBook, books } = useStore();
+  const { selectedBook, setSelectedBook, addToCart, quickAcquireFreeBook, setPreviewSampleBook, books, showToast } = useStore();
 
   if (!selectedBook) return null;
   const isFree = selectedBook.price === 0;
@@ -190,13 +190,61 @@ export const BookDetailsModal: React.FC = () => {
             </div>
           )}
 
-          {/* Guarantee and Instant Delivery Note */}
-          <div className="p-4 bg-[#FAFAFC] border border-[#E8E9F0] rounded-2xl flex items-center justify-between text-xs text-[#686B78]">
+          {/* Guarantee and Social Share Bar */}
+          <div className="p-4 bg-[#FAFAFC] border border-[#E8E9F0] rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs text-[#686B78]">
             <div className="flex items-center gap-2 text-[#171D50] font-medium">
               <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>Official Publication · 100% Guaranteed Digital Delivery</span>
             </div>
-            <span className="text-[11px] text-[#686B78]">Al Jabin Publications</span>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-[#686B78] font-medium">Share:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const shareUrl = window.location.href;
+                  const text = `Check out "${selectedBook.title}" by ${selectedBook.author} on Al Jabin Publications.`;
+                  window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`, '_blank');
+                }}
+                className="px-2.5 py-1 bg-white border border-[#E8E9F0] hover:border-[#171D50] rounded-lg text-[#171923] transition-colors cursor-pointer text-[11px] font-medium"
+                title="Share on Twitter / X"
+              >
+                Twitter / X
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const shareUrl = window.location.href;
+                  window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank');
+                }}
+                className="px-2.5 py-1 bg-white border border-[#E8E9F0] hover:border-[#171D50] rounded-lg text-[#171923] transition-colors cursor-pointer text-[11px] font-medium"
+                title="Share on Facebook"
+              >
+                Facebook
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const shareUrl = window.location.href;
+                  window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`, '_blank');
+                }}
+                className="px-2.5 py-1 bg-white border border-[#E8E9F0] hover:border-[#171D50] rounded-lg text-[#171923] transition-colors cursor-pointer text-[11px] font-medium"
+                title="Share on LinkedIn"
+              >
+                LinkedIn
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.href);
+                  showToast('Book link copied to clipboard!');
+                }}
+                className="px-2.5 py-1 bg-[#171D50] text-white rounded-lg hover:bg-[#0f1338] transition-colors cursor-pointer text-[11px] font-medium"
+                title="Copy Link"
+              >
+                Copy Link
+              </button>
+            </div>
           </div>
 
         </div>
