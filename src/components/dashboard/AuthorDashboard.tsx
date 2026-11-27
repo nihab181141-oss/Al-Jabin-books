@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useStore } from '../../context/StoreContext';
+import { auth } from '../../lib/firebase';
 import { AuthorSalesData, Book } from '../../types';
 import {
+  AlertCircle,
   ArrowLeft,
   BarChart3,
   BookOpen,
@@ -9,6 +11,8 @@ import {
   Download,
   Edit3,
   Eye,
+  FileText,
+  Loader2,
   Lock,
   LogOut,
   Mail,
@@ -47,13 +51,26 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
     updateUserProfile,
     logoutUser,
     logoIconColor,
+    userLibrary,
+    refreshUserLibrary,
     userOrders,
     refreshUserOrders,
+    lookupOrder,
     showToast,
   } = useStore();
 
   const [activeTab, setActiveTab] = useState<DashboardTab>('books');
   const [previewingBook, setPreviewingBook] = useState<Book | null>(null);
+  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewMeta, setPreviewMeta] = useState<{
+    hasUploadedPdf: boolean;
+    hasVaultFile: boolean;
+    manuscriptContent: string;
+    sampleChapters: Array<{ title: string; excerpt: string }>;
+  } | null>(null);
+  const [syncingOrderId, setSyncingOrderId] = useState<string | null>(null);
   const [salesData, setSalesData] = useState<AuthorSalesData>({
     summary: {
       totalBooks: 0,
@@ -130,8 +147,98 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
   useEffect(() => {
     if (activeTab === 'orders' && currentUser) {
       refreshUserOrders();
+      refreshUserLibrary();
     }
-  }, [activeTab, currentUser, refreshUserOrders]);
+  }, [activeTab, currentUser, refreshUserOrders, refreshUserLibrary]);
+
+  // Load authenticated read-only PDF stream & manuscript metadata when preview modal opens
+  useEffect(() => {
+    if (!previewingBook) {
+      setPreviewPdfUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      setPreviewMeta(null);
+      setPreviewError(null);
+      setPreviewLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+
+    const loadPreview = async () => {
+      setPreviewLoading(true);
+      setPreviewError(null);
+      setPreviewMeta(null);
+      try {
+        const user = auth.currentUser;
+        if (!user) {
+          throw new Error('Please sign in again to verify author preview permissions.');
+        }
+        const token = await user.getIdToken();
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const [pdfRes, metaRes] = await Promise.all([
+          fetch(`/api/author/books/${encodeURIComponent(previewingBook.id)}/preview`, {
+            headers,
+            signal: controller.signal,
+          }),
+          fetch(`/api/author/books/${encodeURIComponent(previewingBook.id)}/manuscript`, {
+            headers,
+            signal: controller.signal,
+          }).catch(() => null),
+        ]);
+
+        if (!pdfRes.ok) {
+          const errJson = await pdfRes.json().catch(() => ({}));
+          throw new Error(errJson.error || 'Could not load PDF preview.');
+        }
+
+        const pdfBlob = await pdfRes.blob();
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(pdfBlob);
+        setPreviewPdfUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return objectUrl;
+        });
+
+        if (metaRes && metaRes.ok) {
+          const metaJson = await metaRes.json().catch(() => null);
+          if (!cancelled && metaJson?.success) {
+            setPreviewMeta({
+              hasUploadedPdf: Boolean(metaJson.hasUploadedPdf),
+              hasVaultFile: Boolean(metaJson.hasVaultFile),
+              manuscriptContent: String(metaJson.manuscriptContent || ''),
+              sampleChapters: Array.isArray(metaJson.sampleChapters) ? metaJson.sampleChapters : [],
+            });
+          }
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setPreviewError(
+            err?.name === 'AbortError'
+              ? 'Preview request timed out. Please try again.'
+              : err?.message || 'Unable to load read-only PDF preview.'
+          );
+        }
+      } finally {
+        clearTimeout(timer);
+        if (!cancelled) setPreviewLoading(false);
+      }
+    };
+
+    loadPreview();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [previewingBook?.id]);
 
   const openEditModal = (book: Book) => {
     setEditingBook(book);
@@ -160,8 +267,8 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
       });
       setEditingBook(null);
       await loadStats();
-    } catch {
-      // handled cleanly in context or inline
+    } catch (err: any) {
+      showToast(err?.message || 'Could not update ebook details.');
     } finally {
       setSavingEdit(false);
     }
@@ -173,6 +280,8 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
       await deletePublishedBook(bookId);
       setConfirmDeleteId(null);
       await loadStats();
+    } catch (err: any) {
+      showToast(err?.message || 'Unable to delete publication right now.');
     } finally {
       setDeletingId(null);
     }
@@ -592,8 +701,18 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
                                 <div className="inline-flex items-center justify-end gap-1">
                                   <button
                                     type="button"
+                                    onClick={() => setPreviewingBook(book)}
+                                    title="Read-Only PDF Preview"
+                                    aria-label={`Preview PDF of ${book.title}`}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-[#171D50] bg-[#F5F4EF] hover:bg-[#171D50] hover:text-white rounded-full transition-colors cursor-pointer mr-1"
+                                  >
+                                    <FileText className="w-3.5 h-3.5" />
+                                    <span className="hidden sm:inline">Preview PDF</span>
+                                  </button>
+                                  <button
+                                    type="button"
                                     onClick={() => setSelectedBook(book)}
-                                    title="Preview in Store"
+                                    title="View in Storefront"
                                     aria-label={`Inspect ${book.title}`}
                                     className="p-2 text-[#575A66] hover:text-[#171D50] hover:bg-[#F5F4EF] rounded-full transition-colors cursor-pointer"
                                   >
@@ -635,18 +754,28 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
             <div className="p-4 sm:p-6 space-y-8">
               {/* Visual Earnings & Sales Performance Chart */}
               <div className="p-6 bg-[#FAFAFC] border border-black/[0.08] rounded-2xl space-y-4 shadow-2xs">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="text-base font-extrabold text-[#171923]">
                       Revenue & Sales Performance Overview
                     </h3>
                     <p className="text-xs text-[#686B78]">
-                      Visual breakdown of total gross earnings across your published volumes.
+                      Visual comparison of gross earnings and reader units claimed/downloaded per title.
                     </p>
                   </div>
-                  <div className="text-right font-mono tabular-nums">
-                    <div className="text-xl font-bold text-[#171D50]">৳{salesData.summary.totalRevenueBDT.toLocaleString()}</div>
-                    <div className="text-[10px] text-[#686B78] uppercase tracking-wider">Gross Earnings</div>
+                  <div className="flex items-center gap-5 text-right font-mono tabular-nums">
+                    <div>
+                      <div className="text-xl font-bold text-emerald-700">
+                        {salesData.summary.totalUnitsSold.toLocaleString()}
+                      </div>
+                      <div className="text-[10px] text-[#686B78] uppercase tracking-wider">Units / Claims</div>
+                    </div>
+                    <div>
+                      <div className="text-xl font-bold text-[#171D50]">
+                        ৳{salesData.summary.totalRevenueBDT.toLocaleString()}
+                      </div>
+                      <div className="text-[10px] text-[#686B78] uppercase tracking-wider">Gross Earnings</div>
+                    </div>
                   </div>
                 </div>
 
@@ -655,25 +784,63 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
                     No sales data available yet.
                   </div>
                 ) : (
-                  <div className="space-y-3.5 pt-2">
-                    {salesData.perBookStats.map((item) => {
+                  <div className="space-y-4 pt-2">
+                    {(() => {
                       const maxRev = Math.max(1, ...salesData.perBookStats.map((s) => s.revenueBDT));
-                      const pct = Math.round((item.revenueBDT / maxRev) * 100);
-                      return (
-                        <div key={item.bookId} className="space-y-1">
-                          <div className="flex justify-between text-xs font-medium text-[#171923]">
-                            <span className="truncate max-w-[280px]">{item.title}</span>
-                            <span className="font-mono tabular-nums font-semibold">৳{item.revenueBDT.toLocaleString()} ({item.unitsSold} sold)</span>
-                          </div>
-                          <div className="h-3.5 w-full bg-white rounded-full overflow-hidden border border-black/[0.08] shadow-2xs">
-                            <div
-                              className="h-full bg-gradient-to-r from-[#171D50] to-[#2a347d] rounded-full transition-all duration-500"
-                              style={{ width: `${Math.max(6, pct)}%` }}
-                            />
-                          </div>
-                        </div>
+                      const maxUnitsOrDownloads = Math.max(
+                        1,
+                        ...salesData.perBookStats.map((s) => Math.max(s.unitsSold, s.downloadsCount))
                       );
-                    })}
+                      return salesData.perBookStats.map((item) => {
+                        const revPct = item.revenueBDT > 0 ? Math.max(6, Math.round((item.revenueBDT / maxRev) * 100)) : 0;
+                        const activityMetric = Math.max(item.unitsSold, item.downloadsCount);
+                        const activityPct =
+                          activityMetric > 0 ? Math.max(6, Math.round((activityMetric / maxUnitsOrDownloads) * 100)) : 0;
+                        return (
+                          <div key={item.bookId} className="space-y-1.5">
+                            <div className="flex flex-wrap justify-between gap-2 text-xs font-medium text-[#171923]">
+                              <span className="truncate max-w-[280px]">{item.title}</span>
+                              <span className="font-mono tabular-nums font-semibold">
+                                {item.priceBDT === 0 ? (
+                                  <span className="text-emerald-700">Free</span>
+                                ) : (
+                                  `৳${item.revenueBDT.toLocaleString()}`
+                                )}{' '}
+                                · {item.unitsSold} {item.priceBDT === 0 ? 'claimed' : 'sold'} · {item.downloadsCount} downloads
+                              </span>
+                            </div>
+                            <div className="space-y-1">
+                              {item.priceBDT > 0 && (
+                                <div className="h-2.5 w-full bg-white rounded-full overflow-hidden border border-black/[0.08]">
+                                  <div
+                                    className="h-full bg-gradient-to-r from-[#171D50] to-[#2a347d] rounded-full transition-all duration-500"
+                                    style={{ width: `${revPct}%` }}
+                                    title={`Revenue: ৳${item.revenueBDT.toLocaleString()}`}
+                                  />
+                                </div>
+                              )}
+                              <div className="h-2 w-full bg-white rounded-full overflow-hidden border border-black/[0.06]">
+                                <div
+                                  className="h-full bg-emerald-600 rounded-full transition-all duration-500"
+                                  style={{ width: `${activityPct}%` }}
+                                  title={`Units & Downloads: ${item.unitsSold} claimed/sold, ${item.downloadsCount} downloads`}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                    <div className="flex flex-wrap items-center gap-4 pt-1 text-[11px] text-[#686B78]">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#171D50]" />
+                        Gross Revenue (BDT)
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
+                        Units Claimed / PDF Downloads
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -872,7 +1039,7 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
                             {ord.paymentStatus === 'verified' ? '✓ Paid & Verified' : ord.paymentStatus}
                           </span>
                           <span className="font-mono font-bold text-sm text-[#171923]">
-                            ৳{ord.total}
+                            {ord.total === 0 ? 'Free (৳0)' : `৳${ord.total}`}
                           </span>
                         </div>
                       </div>
@@ -880,9 +1047,16 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
                       <div className="space-y-2.5">
                         <div className="text-xs font-medium text-[#171923]">Purchased Publications:</div>
                         {ord.items.map((item, idx) => {
-                          const dl = ord.downloads?.find(
-                            (d) => d.productId === item.bookId || d.productTitle === item.title
-                          ) || ord.downloads?.[idx];
+                          const dlFromOrder =
+                            ord.downloads?.find(
+                              (d) => d.productId === item.bookId || d.productTitle === item.title
+                            ) || ord.downloads?.[idx];
+                          const dlFromLibrary = userLibrary.find(
+                            (u) =>
+                              u.orderNumber === ord.orderNumber &&
+                              (u.productId === item.bookId || u.productTitle === item.title)
+                          );
+                          const dl = dlFromOrder || dlFromLibrary;
                           return (
                             <div
                               key={idx}
@@ -892,6 +1066,7 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
                                 <div className="font-editorial text-sm font-medium text-[#171923]">{item.title}</div>
                                 <div className="text-[11px] text-[#686B78] mt-0.5">
                                   Quantity: {item.quantity} · Format: {item.format || 'PDF & EPUB'}
+                                  {dl && ` · ${dl.downloadCount} of ${dl.maxDownloads} downloads used`}
                                 </div>
                               </div>
 
@@ -899,20 +1074,35 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
                                 <a
                                   href={dl.downloadUrl}
                                   download
+                                  onClick={() => showToast(`Downloading "${item.title}" PDF...`)}
                                   className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-[#171D50] hover:bg-[#0f1338] text-white text-xs font-medium rounded-full transition-colors shrink-0 cursor-pointer shadow-xs"
                                 >
                                   <Download className="w-3.5 h-3.5" />
                                   <span>Download PDF Now</span>
                                 </a>
                               ) : ord.paymentStatus === 'verified' ? (
-                                <a
-                                  href={`/api/downloads/${ord.id}`}
-                                  download
-                                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-[#171D50] hover:bg-[#0f1338] text-white text-xs font-medium rounded-full transition-colors shrink-0 cursor-pointer shadow-xs"
+                                <button
+                                  type="button"
+                                  disabled={syncingOrderId === ord.id}
+                                  onClick={async () => {
+                                    setSyncingOrderId(ord.id);
+                                    try {
+                                      const synced = await lookupOrder(ord.id);
+                                      await Promise.all([refreshUserOrders(), refreshUserLibrary()]);
+                                      if (synced?.downloads && synced.downloads.length > 0) {
+                                        showToast('PDF download link synced!');
+                                      } else {
+                                        showToast('No active download token found on server for this order.');
+                                      }
+                                    } finally {
+                                      setSyncingOrderId(null);
+                                    }
+                                  }}
+                                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-white border border-black/[0.12] hover:border-[#171D50] text-[#171D50] text-xs font-semibold rounded-full transition-colors shrink-0 cursor-pointer"
                                 >
-                                  <Download className="w-3.5 h-3.5" />
-                                  <span>Download PDF</span>
-                                </a>
+                                  <RefreshCw className={`w-3.5 h-3.5 ${syncingOrderId === ord.id ? 'animate-spin' : ''}`} />
+                                  <span>{syncingOrderId === ord.id ? 'Syncing...' : 'Sync PDF Link'}</span>
+                                </button>
                               ) : (
                                 <span className="text-[11px] text-amber-700 italic">
                                   Awaiting payment verification
@@ -1239,7 +1429,7 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
       {/* Read-Only PDF Previewer Modal */}
       {previewingBook && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-black/[0.08] rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto text-left">
+          <div className="bg-white border border-black/[0.08] rounded-3xl max-w-4xl w-full p-6 sm:p-8 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto text-left">
             <div className="flex items-center justify-between pb-3 border-b border-black/[0.08]">
               <div>
                 <div className="text-[10px] uppercase tracking-widest text-[#686B78] font-semibold">
@@ -1252,53 +1442,87 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => setPreviewingBook(null)}
+                aria-label="Close PDF preview"
                 className="p-2 text-[#686B78] hover:text-[#171923] rounded-full hover:bg-black/5 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="flex items-center gap-4 p-4 bg-[#FAFAFC] border border-black/[0.06] rounded-2xl">
+            <div className="flex flex-wrap items-center gap-4 p-4 bg-[#FAFAFC] border border-black/[0.06] rounded-2xl">
               <img
                 src={previewingBook.coverImage}
                 alt={previewingBook.title}
-                className="w-16 h-22 object-cover rounded-lg border border-black/[0.08] shrink-0"
+                className="w-14 h-20 object-cover rounded-lg border border-black/[0.08] shrink-0 bg-[#171D50]"
               />
-              <div className="space-y-1 text-xs">
+              <div className="space-y-1 text-xs flex-1 min-w-[200px]">
                 <div className="font-semibold text-[#171923]">{previewingBook.author}</div>
                 <div className="text-[#686B78]">
                   Category: {previewingBook.category} · Format: {previewingBook.format} · Pages: {previewingBook.pages}
                 </div>
                 <div className="text-emerald-700 font-medium">
-                  ✓ Verified Vault Storage & PDF Manuscript Ready
+                  {previewMeta?.hasVaultFile
+                    ? '✓ Verified Original PDF File Stored in Private Vault'
+                    : previewMeta?.hasUploadedPdf
+                    ? '✓ Verified Cloud PDF Ready for Reader Delivery'
+                    : '✓ Verified Formatted PDF Edition Ready for Delivery'}
                 </div>
               </div>
             </div>
 
-            <div className="space-y-3">
-              <h4 className="text-xs uppercase tracking-wider font-semibold text-[#171923]">
-                Manuscript & Sample Chapters Verification
-              </h4>
-              <div className="p-4 bg-[#FAF7F0] border border-[#E8E2D8] rounded-2xl text-xs space-y-3 max-h-64 overflow-y-auto font-light leading-relaxed text-[#171923]">
-                {previewingBook.manuscriptContent ? (
-                  <p className="whitespace-pre-wrap">{previewingBook.manuscriptContent}</p>
-                ) : previewingBook.sampleChapters && previewingBook.sampleChapters.length > 0 ? (
-                  previewingBook.sampleChapters.map((ch, idx) => (
-                    <div key={idx} className="space-y-1">
-                      <div className="font-semibold">{ch.title}</div>
-                      <p>{ch.excerpt}</p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-[#686B78] italic">
-                    Standard publication vault record verified. Formatted PDF edition generated on demand for readers upon purchase or free claim.
-                  </p>
-                )}
+            {/* Embedded Read-Only PDF Viewport */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs uppercase tracking-wider font-semibold text-[#171923]">
+                  Rendered PDF Verification Preview (Read-Only)
+                </h4>
+                <span className="text-[11px] text-[#686B78]">
+                  Matches exact reader download output
+                </span>
               </div>
+
+              {previewLoading ? (
+                <div className="h-[360px] bg-[#FAFAFC] border border-[#E8E9F0] rounded-2xl flex flex-col items-center justify-center gap-2.5 text-xs text-[#686B78]">
+                  <Loader2 className="w-6 h-6 text-[#171D50] animate-spin" />
+                  <span>Loading secure PDF preview...</span>
+                </div>
+              ) : previewError ? (
+                <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-2.5 text-xs text-rose-700">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{previewError}</span>
+                </div>
+              ) : previewPdfUrl ? (
+                <iframe
+                  src={`${previewPdfUrl}#toolbar=0&navpanes=0`}
+                  title={`Read-only PDF preview of ${previewingBook.title}`}
+                  className="w-full h-[380px] sm:h-[460px] rounded-2xl border border-[#E8E9F0] bg-[#FAFAFC]"
+                />
+              ) : null}
             </div>
 
+            {/* Textual Manuscript / Excerpt Inspection */}
+            {(previewMeta?.manuscriptContent || (previewingBook.sampleChapters && previewingBook.sampleChapters.length > 0)) && (
+              <div className="space-y-2.5">
+                <h4 className="text-xs uppercase tracking-wider font-semibold text-[#171923]">
+                  Manuscript & Excerpt Text
+                </h4>
+                <div className="p-4 bg-[#FAF7F0] border border-[#E8E2D8] rounded-2xl text-xs space-y-3 max-h-48 overflow-y-auto font-light leading-relaxed text-[#171923]">
+                  {previewMeta?.manuscriptContent ? (
+                    <p className="whitespace-pre-wrap">{previewMeta.manuscriptContent}</p>
+                  ) : (
+                    previewingBook.sampleChapters.map((ch, idx) => (
+                      <div key={idx} className="space-y-1">
+                        <div className="font-semibold">{ch.title}</div>
+                        <p>{ch.excerpt}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between pt-3 border-t border-black/[0.08]">
-              <span className="text-[11px] text-[#686B78]">
+              <span className="text-[11px] text-[#686B78] font-mono">
                 ISBN: {previewingBook.isbn}
               </span>
               <button

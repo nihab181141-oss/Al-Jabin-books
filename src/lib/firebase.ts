@@ -12,6 +12,8 @@ export const db = firebaseConfig.firestoreDatabaseId
   ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
   : getFirestore(app);
 export const storage = getStorage(app);
+storage.maxUploadRetryTime = 3500;
+storage.maxOperationRetryTime = 3500;
 
 export enum OperationType {
   CREATE = 'create',
@@ -65,10 +67,13 @@ export function handleFirestoreError(
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Connection verification helper
+// Non-blocking connection verification helper
 export async function testConnection(): Promise<boolean> {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    await Promise.race([
+      getDocFromServer(doc(db, 'test', 'connection')),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Connection check timed out')), 5000)),
+    ]);
     return true;
   } catch (err: any) {
     if (err?.message?.includes('the client is offline')) {
@@ -80,4 +85,4 @@ export async function testConnection(): Promise<boolean> {
 }
 
 export const verifyFirestoreConnection = testConnection;
-testConnection();
+testConnection().catch(() => {});

@@ -197,53 +197,57 @@ export const BookDetailsModal: React.FC = () => {
               <span>Official Publication · 100% Guaranteed Digital Delivery</span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-[11px] text-[#686B78] font-medium">Share:</span>
-              <button
-                type="button"
-                onClick={() => {
-                  const shareUrl = window.location.href;
-                  const text = `Check out "${selectedBook.title}" by ${selectedBook.author} on Al Jabin Publications.`;
-                  window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`, '_blank');
-                }}
-                className="px-2.5 py-1 bg-white border border-[#E8E9F0] hover:border-[#171D50] rounded-lg text-[#171923] transition-colors cursor-pointer text-[11px] font-medium"
-                title="Share on Twitter / X"
-              >
-                Twitter / X
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const shareUrl = window.location.href;
-                  window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank');
-                }}
-                className="px-2.5 py-1 bg-white border border-[#E8E9F0] hover:border-[#171D50] rounded-lg text-[#171923] transition-colors cursor-pointer text-[11px] font-medium"
-                title="Share on Facebook"
-              >
-                Facebook
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const shareUrl = window.location.href;
-                  window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`, '_blank');
-                }}
-                className="px-2.5 py-1 bg-white border border-[#E8E9F0] hover:border-[#171D50] rounded-lg text-[#171923] transition-colors cursor-pointer text-[11px] font-medium"
-                title="Share on LinkedIn"
-              >
-                LinkedIn
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(window.location.href);
-                  showToast('Book link copied to clipboard!');
-                }}
-                className="px-2.5 py-1 bg-[#171D50] text-white rounded-lg hover:bg-[#0f1338] transition-colors cursor-pointer text-[11px] font-medium"
-                title="Copy Link"
-              >
-                Copy Link
-              </button>
+              {(() => {
+                const shareUrl =
+                  typeof window !== 'undefined'
+                    ? `${window.location.origin}${window.location.pathname}?book=${encodeURIComponent(selectedBook.id)}`
+                    : `https://al-jabin-publications.vercel.app/?book=${encodeURIComponent(selectedBook.id)}`;
+                const shareText = `Check out "${selectedBook.title}" by ${selectedBook.author} on Al Jabin Publications.`;
+                return (
+                  <>
+                    <a
+                      href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 bg-white border border-[#E8E9F0] hover:border-[#171D50] rounded-lg text-[#171923] transition-colors text-[11px] font-medium"
+                      title="Share on Twitter / X"
+                    >
+                      Twitter / X
+                    </a>
+                    <a
+                      href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 bg-white border border-[#E8E9F0] hover:border-[#171D50] rounded-lg text-[#171923] transition-colors text-[11px] font-medium"
+                      title="Share on Facebook"
+                    >
+                      Facebook
+                    </a>
+                    <a
+                      href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1 bg-white border border-[#E8E9F0] hover:border-[#171D50] rounded-lg text-[#171923] transition-colors text-[11px] font-medium"
+                      title="Share on LinkedIn"
+                    >
+                      LinkedIn
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(shareUrl);
+                        showToast('Book share link copied to clipboard!');
+                      }}
+                      className="px-2.5 py-1 bg-[#171D50] text-white rounded-lg hover:bg-[#0f1338] transition-colors cursor-pointer text-[11px] font-medium"
+                      title="Copy Link"
+                    >
+                      Copy Link
+                    </button>
+                  </>
+                );
+              })()}
             </div>
           </div>
 

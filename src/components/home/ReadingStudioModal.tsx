@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ShoppingBag,
+  Download,
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { OpenCodexSpecimen } from '../ui/BookcraftIllustrations';
@@ -25,7 +26,7 @@ interface RealSampleEntry {
 }
 
 export const ReadingStudioModal: React.FC<ReadingStudioModalProps> = ({ isOpen, onClose }) => {
-  const { books, addToCart, logoIconColor } = useStore();
+  const { books, addToCart, quickAcquireFreeBook, logoIconColor } = useStore();
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [fontFamily, setFontFamily] = useState<'serif' | 'sans' | 'mono'>('serif');
@@ -268,16 +269,30 @@ export const ReadingStudioModal: React.FC<ReadingStudioModalProps> = ({ isOpen, 
                     Al Jabin Publications · {currentSample.book.format}
                   </div>
 
-                  <button
-                    onClick={() => {
-                      addToCart(currentSample.book, 1);
-                      onClose();
-                    }}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#171D50] text-white text-xs font-semibold rounded-full hover:bg-[#0f1338] transition-all shadow-sm cursor-pointer"
-                  >
-                    <ShoppingBag className="w-3.5 h-3.5" />
-                    <span>Add Full Edition (৳{currentSample.book.price})</span>
-                  </button>
+                  {currentSample.book.price === 0 ? (
+                    <button
+                      onClick={() => {
+                        const target = currentSample.book;
+                        onClose();
+                        quickAcquireFreeBook(target);
+                      }}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-700 text-white text-xs font-semibold rounded-full hover:bg-emerald-800 transition-all shadow-sm cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Get Free PDF Now</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        addToCart(currentSample.book, 1);
+                        onClose();
+                      }}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#171D50] text-white text-xs font-semibold rounded-full hover:bg-[#0f1338] transition-all shadow-sm cursor-pointer"
+                    >
+                      <ShoppingBag className="w-3.5 h-3.5" />
+                      <span>Add Full Edition (৳{currentSample.book.price})</span>
+                    </button>
+                  )}
                 </div>
               </>
             ) : (

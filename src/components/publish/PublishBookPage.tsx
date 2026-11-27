@@ -33,22 +33,53 @@ async function compressCoverFileToDataUrl(file: File): Promise<string> {
       const img = new Image();
       img.onerror = () => reject(new Error('Invalid image format.'));
       img.onload = () => {
-        const maxWidth = 480;
-        const scale = img.width > maxWidth ? maxWidth / img.width : 1;
-        const w = Math.max(120, Math.round(img.width * scale));
-        const h = Math.max(160, Math.round(img.height * scale));
+        const attempts: Array<{ maxWidth: number; quality: number }> = [
+          { maxWidth: 480, quality: 0.82 },
+          { maxWidth: 420, quality: 0.7 },
+          { maxWidth: 360, quality: 0.58 },
+          { maxWidth: 300, quality: 0.48 },
+        ];
         const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
           resolve(String(reader.result || ''));
           return;
         }
-        ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.82));
+        let bestDataUrl = '';
+        for (const { maxWidth, quality } of attempts) {
+          const scale = img.width > maxWidth ? maxWidth / img.width : 1;
+          const w = Math.max(120, Math.round(img.width * scale));
+          const h = Math.max(160, Math.round(img.height * scale));
+          canvas.width = w;
+          canvas.height = h;
+          ctx.clearRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          bestDataUrl = canvas.toDataURL('image/jpeg', quality);
+          if (bestDataUrl.length <= 220000) {
+            resolve(bestDataUrl);
+            return;
+          }
+        }
+        resolve(bestDataUrl);
       };
       img.src = String(reader.result || '');
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read PDF file.'));
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      const commaIdx = result.indexOf(',');
+      if (commaIdx === -1) {
+        reject(new Error('Failed to encode PDF file.'));
+        return;
+      }
+      resolve(result.slice(commaIdx + 1));
     };
     reader.readAsDataURL(file);
   });
@@ -66,6 +97,7 @@ export const PublishBookPage: React.FC<PublishBookPageProps> = ({
     myPublishedBooks,
     setSelectedBook,
     logoIconColor,
+    showToast,
   } = useStore();
 
   const [title, setTitle] = useState('');
@@ -104,19 +136,27 @@ export const PublishBookPage: React.FC<PublishBookPageProps> = ({
   }, [userProfile, currentUser]);
 
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const inputEl = e.target;
+    const file = inputEl.files?.[0];
     if (!file) return;
     try {
       const compressed = await compressCoverFileToDataUrl(file);
-      setCoverImage(compressed);
-      setErrorMsg(null);
+      if (compressed.length > 245000) {
+        setErrorMsg('Cover image is still too detailed after compression. Please use a simpler JPG/PNG.');
+      } else {
+        setCoverImage(compressed);
+        setErrorMsg(null);
+      }
     } catch (err: any) {
       setErrorMsg(err?.message || 'Could not process cover image.');
+    } finally {
+      inputEl.value = '';
     }
   };
 
   const handleManuscriptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const inputEl = e.target;
+    const file = inputEl.files?.[0];
     if (!file) return;
     setErrorMsg(null);
     try {
@@ -127,30 +167,24 @@ export const PublishBookPage: React.FC<PublishBookPageProps> = ({
         const maxBytes = 15 * 1024 * 1024;
         if (file.size > maxBytes) {
           setErrorMsg('PDF file must be 15 MB or smaller.');
-          e.target.value = '';
           return;
         }
-        const buffer = await file.arrayBuffer();
-        const bytes = new Uint8Array(buffer);
+        const headerBuffer = await file.slice(0, 5).arrayBuffer();
+        const headerBytes = new Uint8Array(headerBuffer);
         // Verify %PDF- magic header
         if (
-          bytes.length < 5 ||
-          bytes[0] !== 0x25 ||
-          bytes[1] !== 0x50 ||
-          bytes[2] !== 0x44 ||
-          bytes[3] !== 0x46 ||
-          bytes[4] !== 0x2d
+          headerBytes.length < 5 ||
+          headerBytes[0] !== 0x25 ||
+          headerBytes[1] !== 0x50 ||
+          headerBytes[2] !== 0x44 ||
+          headerBytes[3] !== 0x46 ||
+          headerBytes[4] !== 0x2d
         ) {
           setErrorMsg('The selected file does not have a valid PDF signature.');
-          e.target.value = '';
           return;
         }
-        let binary = '';
-        const chunkSize = 0x8000;
-        for (let i = 0; i < bytes.length; i += chunkSize) {
-          binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-        }
-        setUploadedPdfBase64(btoa(binary));
+        const base64Pdf = await readFileAsBase64(file);
+        setUploadedPdfBase64(base64Pdf);
         setUploadedPdfFile(file);
         setUploadedFileName(file.name);
         setFormat('PDF (Original Edition)');
@@ -180,6 +214,8 @@ export const PublishBookPage: React.FC<PublishBookPageProps> = ({
       }
     } catch {
       setErrorMsg('Could not read uploaded manuscript file.');
+    } finally {
+      inputEl.value = '';
     }
   };
 
@@ -439,7 +475,13 @@ export const PublishBookPage: React.FC<PublishBookPageProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => deletePublishedBook(b.id)}
+                        onClick={async () => {
+                          try {
+                            await deletePublishedBook(b.id);
+                          } catch (err: any) {
+                            showToast(err?.message || 'Could not remove publication.');
+                          }
+                        }}
                         className="p-1 text-[#686B78] hover:text-rose-700 cursor-pointer shrink-0"
                         title="Remove volume"
                       >

@@ -226,6 +226,39 @@ function generateAuthorCoverDataUrl(title: string, author: string, category: str
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
+async function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = 15000
+): Promise<globalThis.Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw new Error('Request timed out. Please check your connection and try again.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [books, setBooks] = useState<Book[]>([]);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
@@ -304,7 +337,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const getAuthHeaders = async (): Promise<Record<string, string>> => {
     if (!auth.currentUser) return {};
     try {
-      const token = await auth.currentUser.getIdToken();
+      const token = await withTimeout(auth.currentUser.getIdToken(), 5000, 'Auth token timeout');
       return token ? { Authorization: `Bearer ${token}` } : {};
     } catch {
       return {};
@@ -323,7 +356,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             pdfStoragePath?: string;
           } = {};
           try {
-            const privSnap = await getDoc(doc(db, 'products', book.id, 'private', 'manuscript'));
+            const privSnap = await withTimeout(
+              getDoc(doc(db, 'products', book.id, 'private', 'manuscript')),
+              3500,
+              'Private doc fetch timeout'
+            );
             if (privSnap.exists()) {
               const pData = privSnap.data() as Record<string, any>;
               if (typeof pData.manuscriptContent === 'string') {
@@ -338,49 +375,57 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
           } catch {}
 
-          await fetch('/api/products', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...authHeaders,
+          await fetchWithTimeout(
+            '/api/products',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...authHeaders,
+              },
+              body: JSON.stringify({
+                id: book.id,
+                title: book.title,
+                subtitle: book.subtitle,
+                description: book.description,
+                author: book.author,
+                category: book.category,
+                coverImage: book.coverImage,
+                priceBDT: book.price,
+                priceUSD: book.priceUSD,
+                format: book.format,
+                fileSize: book.fileSize,
+                pages: book.pages,
+                language: book.language,
+                isbn: book.isbn,
+                keyTakeaways: book.keyTakeaways,
+                sampleChapters: book.sampleChapters,
+                manuscriptContent: book.manuscriptContent || privateFields.manuscriptContent,
+                ...(privateFields.privatePdfUrl ? { privatePdfUrl: privateFields.privatePdfUrl } : {}),
+                ...(privateFields.pdfStoragePath ? { pdfStoragePath: privateFields.pdfStoragePath } : {}),
+                isPublished: true,
+                isFeatured: book.isFeatured,
+                isNewRelease: book.isNewRelease,
+                publishedYear: book.publishedYear,
+                createdAt: book.createdAt,
+              }),
             },
-            body: JSON.stringify({
-              id: book.id,
-              title: book.title,
-              subtitle: book.subtitle,
-              description: book.description,
-              author: book.author,
-              category: book.category,
-              coverImage: book.coverImage,
-              priceBDT: book.price,
-              priceUSD: book.priceUSD,
-              format: book.format,
-              fileSize: book.fileSize,
-              pages: book.pages,
-              language: book.language,
-              isbn: book.isbn,
-              keyTakeaways: book.keyTakeaways,
-              sampleChapters: book.sampleChapters,
-              manuscriptContent: book.manuscriptContent || privateFields.manuscriptContent,
-              ...(privateFields.privatePdfUrl ? { privatePdfUrl: privateFields.privatePdfUrl } : {}),
-              ...(privateFields.pdfStoragePath ? { pdfStoragePath: privateFields.pdfStoragePath } : {}),
-              isPublished: true,
-              isFeatured: book.isFeatured,
-              isNewRelease: book.isNewRelease,
-              publishedYear: book.publishedYear,
-              createdAt: book.createdAt,
-            }),
-          });
+            10000
+          );
           return;
         }
       }
 
       // Public/unauthenticated catalog hydration: server verifies fields directly from Firestore
-      await fetch('/api/products/catalog-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: book.id }),
-      });
+      await fetchWithTimeout(
+        '/api/products/catalog-sync',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: book.id }),
+        },
+        7000
+      );
     } catch {
       // Non-fatal background sync
     }
@@ -397,10 +442,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const fetchPublishedCatalog = async () => {
       const mergedMap = new Map<string, Book>();
 
-      try {
-        const productsQuery = query(collection(db, 'products'), where('isPublished', '==', true));
-        const snapshot = await getDocs(productsQuery);
-        snapshot.docs.forEach((docSnap) => {
+      // Fetch server catalog and Firestore catalog concurrently so neither stalls the other
+      const [firestoreRes, serverRes] = await Promise.allSettled([
+        withTimeout(
+          getDocs(query(collection(db, 'products'), where('isPublished', '==', true))),
+          6500,
+          'Firestore catalog load timeout'
+        ),
+        fetchWithTimeout('/api/products', {}, 8000),
+      ]);
+
+      if (firestoreRes.status === 'fulfilled') {
+        firestoreRes.value.docs.forEach((docSnap) => {
           const d = docSnap.data() as Record<string, any>;
           const mapped: Book = {
             id: docSnap.id,
@@ -433,14 +486,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           mergedMap.set(mapped.id, mapped);
           syncBookToServer(mapped);
         });
-      } catch (err) {
-        console.warn('Catalog Firestore read skipped or empty:', err);
+      } else {
+        console.warn('Catalog Firestore read skipped or timed out:', firestoreRes.reason);
       }
 
-      try {
-        const res = await fetch('/api/products');
-        if (res.ok) {
-          const data = await res.json();
+      if (serverRes.status === 'fulfilled' && serverRes.value.ok) {
+        try {
+          const data = await serverRes.value.json();
           if (data.success && Array.isArray(data.products)) {
             for (const p of data.products) {
               if (!mergedMap.has(p.id)) {
@@ -454,12 +506,33 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               }
             }
           }
-        }
-      } catch {
-        // Ignore network error on boot
+        } catch {}
       }
 
-      setBooks(Array.from(mergedMap.values()));
+      // Non-destructive merge: preserve any newly published books already in React state
+      let finalBooksList: Book[] = [];
+      setBooks((prev) => {
+        const finalMap = new Map(mergedMap);
+        for (const existingBook of prev) {
+          if (!finalMap.has(existingBook.id)) {
+            finalMap.set(existingBook.id, existingBook);
+          }
+        }
+        finalBooksList = Array.from(finalMap.values());
+        return finalBooksList;
+      });
+
+      // Handle ?book=<id> deep-link sharing URL
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const targetBookId = params.get('book');
+        if (targetBookId) {
+          const matched = mergedMap.get(targetBookId);
+          if (matched) {
+            setSelectedBook(matched);
+          }
+        }
+      }
     };
 
     fetchPublishedCatalog();
@@ -473,7 +546,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const userDocPath = `users/${user.uid}`;
         try {
           const userDocRef = doc(db, 'users', user.uid);
-          const snap = await getDoc(userDocRef);
+          const snap = await withTimeout(getDoc(userDocRef), 4500, 'User profile fetch timeout');
           const extra = compactOptionalFields(pendingSignupProfileRef.current || undefined);
           pendingSignupProfileRef.current = null;
 
@@ -482,7 +555,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             if (Object.keys(extra).length > 0) {
               const mergedUpdate = { ...extra, updatedAt: new Date().toISOString() };
               try {
-                await updateDoc(userDocRef, mergedUpdate);
+                await withTimeout(updateDoc(userDocRef, mergedUpdate), 4500, 'Profile update timeout');
               } catch (writeErr) {
                 handleFirestoreError(writeErr, OperationType.UPDATE, userDocPath);
               }
@@ -502,7 +575,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               updatedAt: now,
             };
             try {
-              await setDoc(userDocRef, newProfile);
+              await withTimeout(setDoc(userDocRef, newProfile), 4500, 'Profile create timeout');
             } catch (writeErr) {
               handleFirestoreError(writeErr, OperationType.CREATE, userDocPath);
             }
@@ -541,7 +614,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const authHeaders = await getAuthHeaders();
       if (!authHeaders.Authorization) return;
-      const res = await fetch('/api/user/library', { headers: authHeaders });
+      const res = await fetchWithTimeout('/api/user/library', { headers: authHeaders }, 8000);
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
@@ -569,7 +642,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const authHeaders = await getAuthHeaders();
       let serverOrders: Order[] = [];
       if (authHeaders.Authorization) {
-        const res = await fetch('/api/user/orders', { headers: authHeaders });
+        const res = await fetchWithTimeout('/api/user/orders', { headers: authHeaders }, 8000);
         if (res.ok) {
           const data = await res.json();
           if (data.success && Array.isArray(data.orders)) {
@@ -649,7 +722,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [currentUser]);
 
-  // Self-Publishing Ebook Mutation
+  // Self-Publishing Ebook Mutation (Fast Server Vault First + Non-Blocking Cloud/Firestore Sync)
   const publishBook = async (input: PublishBookInput): Promise<PublishResult> => {
     if (!currentUser) {
       throw new Error('Please sign in or create an account before publishing an ebook.');
@@ -678,7 +751,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const priceUSD = Number((priceBDT / 115).toFixed(2));
     const coverImage =
       input.coverImage && input.coverImage.trim().length > 0
-        ? input.coverImage.trim().slice(0, 250000)
+        ? input.coverImage.trim().slice(0, 248000)
         : generateAuthorCoverDataUrl(cleanTitle, cleanAuthor, input.category);
 
     const sampleChapters =
@@ -707,27 +780,28 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       : Math.max(240, Math.round((manuscriptContent.length + coverImage.length) / 1024));
     const fileSize = approxKB > 1024 ? `${(approxKB / 1024).toFixed(1)} MB` : `${approxKB} KB`;
 
-    // Upload binary PDF to private Firebase Storage (/ebooks/{uid}/{bookId}.pdf) when provided
+    // Fast bounded optional cloud PDF upload (max 3s) so unprovisioned storage NEVER hangs publishing
     let privatePdfUrl: string | undefined;
     let pdfStoragePath: string | undefined;
-    if (input.uploadedPdfFile) {
+    if (input.uploadedPdfFile && !input.uploadedPdfBase64) {
       try {
         const storagePath = `ebooks/${currentUser.uid}/${bookId}.pdf`;
         const fileRef = ref(storage, storagePath);
-        await uploadBytes(fileRef, input.uploadedPdfFile, {
-          contentType: 'application/pdf',
-          customMetadata: {
-            bookId,
-            ownerId: currentUser.uid,
-          },
-        });
-        const downloadUrl = await getDownloadURL(fileRef);
+        await withTimeout(
+          uploadBytes(fileRef, input.uploadedPdfFile, {
+            contentType: 'application/pdf',
+            customMetadata: { bookId, ownerId: currentUser.uid },
+          }),
+          3000,
+          'Cloud PDF storage timeout'
+        );
+        const downloadUrl = await withTimeout(getDownloadURL(fileRef), 2000, 'Cloud URL timeout');
         if (downloadUrl && downloadUrl.length <= 512) {
           privatePdfUrl = downloadUrl;
           pdfStoragePath = storagePath;
         }
       } catch (storageErr) {
-        console.warn('Cloud PDF storage upload notice (using secure server vault):', storageErr);
+        console.warn('Cloud PDF storage skipped (using server vault):', storageErr);
       }
     }
 
@@ -759,33 +833,40 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     const authHeaders = await getAuthHeaders();
+    if (!authHeaders.Authorization) {
+      throw new Error('Authentication session expired. Please sign in again and retry.');
+    }
 
-    // 1. Sync immediately with server runtime (vault stores private PDF & cloud URL privately)
-    const serverRes = await fetch('/api/products', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders,
+    // 1. Save immediately to server disk vault & persisted catalog (.products_catalog.json + .private_ebooks)
+    const serverRes = await fetchWithTimeout(
+      '/api/products',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        body: JSON.stringify({
+          ...newBook,
+          ...(manuscriptContent ? { manuscriptContent } : {}),
+          ...(input.uploadedPdfBase64 ? { uploadedPdfBase64: input.uploadedPdfBase64 } : {}),
+          ...(privatePdfUrl ? { privatePdfUrl } : {}),
+          ...(pdfStoragePath ? { pdfStoragePath } : {}),
+          priceBDT,
+          slug,
+          shortDescription: cleanDesc.slice(0, 300),
+          isPublished: true,
+        }),
       },
-      body: JSON.stringify({
-        ...newBook,
-        ...(manuscriptContent ? { manuscriptContent } : {}),
-        ...(input.uploadedPdfBase64 ? { uploadedPdfBase64: input.uploadedPdfBase64 } : {}),
-        ...(privatePdfUrl ? { privatePdfUrl } : {}),
-        ...(pdfStoragePath ? { pdfStoragePath } : {}),
-        priceBDT,
-        slug,
-        shortDescription: cleanDesc.slice(0, 300),
-        isPublished: true,
-      }),
-    });
+      20000
+    );
 
     if (!serverRes.ok) {
       const errData = await serverRes.json().catch(() => ({}));
       throw new Error(errData.error || 'Failed to register ebook with publishing server.');
     }
 
-    // 2. Persist public metadata ONLY to /products/{bookId} (NO manuscriptContent or privatePdfUrl!)
+    // 2. Persist public metadata to Firestore with a strict 7s timeout so UI NEVER hangs indefinitely
     const firestorePayload: Record<string, any> = {
       ownerId: currentUser.uid,
       title: newBook.title,
@@ -817,8 +898,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let firestoreSynced = true;
     try {
       try {
-        await setDoc(doc(db, 'products', bookId), firestorePayload);
-        // Persist private manuscript text and cloud PDF URL strictly inside owner-only subcollection
+        await withTimeout(
+          setDoc(doc(db, 'products', bookId), firestorePayload),
+          7000,
+          'Firestore metadata sync timed out'
+        );
         if (manuscriptContent || input.uploadedFileName || input.uploadedPdfBase64 || privatePdfUrl) {
           const privatePayload: Record<string, any> = {
             ownerId: currentUser.uid,
@@ -831,7 +915,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
           if (privatePdfUrl) privatePayload.privatePdfUrl = privatePdfUrl;
           if (pdfStoragePath) privatePayload.pdfStoragePath = pdfStoragePath;
-          await setDoc(doc(db, 'products', bookId, 'private', 'manuscript'), privatePayload);
+          await withTimeout(
+            setDoc(doc(db, 'products', bookId, 'private', 'manuscript'), privatePayload),
+            5000,
+            'Firestore private doc timeout'
+          );
         }
       } catch (err) {
         handleFirestoreError(err, OperationType.CREATE, `products/${bookId}`);
@@ -841,11 +929,41 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.warn('Firestore product sync notice:', structuredErr?.message);
     }
 
-    setBooks((prev) => [newBook, ...prev]);
+    // Optional background backup of PDF to Firebase Storage if uploadedPdfFile exists (non-blocking!)
+    if (input.uploadedPdfFile && !privatePdfUrl) {
+      const storagePath = `ebooks/${currentUser.uid}/${bookId}.pdf`;
+      const fileRef = ref(storage, storagePath);
+      withTimeout(
+        uploadBytes(fileRef, input.uploadedPdfFile, {
+          contentType: 'application/pdf',
+          customMetadata: { bookId, ownerId: currentUser.uid },
+        }).then(() => getDownloadURL(fileRef)),
+        4000,
+        'Background cloud backup timeout'
+      )
+        .then(async (downloadUrl) => {
+          if (downloadUrl && downloadUrl.length <= 512) {
+            await setDoc(
+              doc(db, 'products', bookId, 'private', 'manuscript'),
+              {
+                ownerId: currentUser.uid,
+                hasUploadedPdf: true,
+                privatePdfUrl: downloadUrl,
+                pdfStoragePath: storagePath,
+                updatedAt: new Date().toISOString(),
+              },
+              { merge: true }
+            ).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
+
+    setBooks((prev) => [newBook, ...prev.filter((b) => b.id !== newBook.id)]);
     showToast(
       firestoreSynced
         ? `"${newBook.title}" is now published live!`
-        : `"${newBook.title}" published locally (check Firestore configuration).`
+        : `"${newBook.title}" published live on server!`
     );
 
     return { book: newBook, firestoreSynced };
@@ -857,22 +975,37 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     const authHeaders = await getAuthHeaders();
-    await fetch(`/api/products/${encodeURIComponent(bookId)}`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders,
+    await fetchWithTimeout(
+      `/api/products/${encodeURIComponent(bookId)}`,
+      {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
       },
-    }).catch(() => {});
+      8000
+    ).catch(() => {});
 
-    // Clean up private Firebase Storage object if uploaded
-    await deleteObject(ref(storage, `ebooks/${currentUser.uid}/${bookId}.pdf`)).catch(() => {});
+    // Clean up private Firebase Storage object if uploaded (fast bounded timeout)
+    withTimeout(
+      deleteObject(ref(storage, `ebooks/${currentUser.uid}/${bookId}.pdf`)),
+      2500,
+      'Storage delete timeout'
+    ).catch(() => {});
 
     try {
-      // Delete private subcollection document first while parent product doc exists for Master Gate rule check
-      await deleteDoc(doc(db, 'products', bookId, 'private', 'manuscript')).catch(() => {});
+      await withTimeout(
+        deleteDoc(doc(db, 'products', bookId, 'private', 'manuscript')),
+        4000,
+        'Private doc delete timeout'
+      ).catch(() => {});
       try {
-        await deleteDoc(doc(db, 'products', bookId));
+        await withTimeout(
+          deleteDoc(doc(db, 'products', bookId)),
+          5000,
+          'Firestore delete timeout'
+        );
       } catch (err) {
         handleFirestoreError(err, OperationType.DELETE, `products/${bookId}`);
       }
@@ -926,12 +1059,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       description: nextDesc,
     };
 
-    await syncBookToServer(updatedBook);
+    await withTimeout(syncBookToServer(updatedBook), 8000, 'Server update timeout').catch(() => {});
 
     try {
       const productRef = doc(db, 'products', bookId);
       const updatePayload: Record<string, any> = {
         title: nextTitle,
+        subtitle: nextSubtitle || '',
         priceBDT: nextPrice,
         priceUSD: nextPriceUSD,
         category: nextCategory,
@@ -939,11 +1073,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         shortDescription: nextDesc.slice(0, 580),
         updatedAt: new Date().toISOString(),
       };
-      if (nextSubtitle) {
-        updatePayload.subtitle = nextSubtitle;
-      }
       try {
-        await updateDoc(productRef, updatePayload);
+        await withTimeout(
+          updateDoc(productRef, updatePayload),
+          6000,
+          'Firestore update timeout'
+        );
       } catch (err) {
         handleFirestoreError(err, OperationType.UPDATE, `products/${bookId}`);
       }
@@ -972,11 +1107,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const authored = books.filter((b) => b.ownerId === currentUser.uid);
     if (authored.length > 0) {
-      await Promise.all(authored.map((b) => syncBookToServer(b)));
+      await withTimeout(
+        Promise.all(authored.map((b) => syncBookToServer(b))),
+        5000,
+        'Book sync timeout'
+      ).catch(() => {});
     }
 
     const authHeaders = await getAuthHeaders();
-    const res = await fetch('/api/author/stats', { headers: authHeaders });
+    const res = await fetchWithTimeout('/api/author/stats', { headers: authHeaders }, 10000);
     if (!res.ok) {
       throw new Error('Unable to load author sales statistics.');
     }
@@ -1046,11 +1185,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const applyCoupon = async (code: string) => {
     const cleanCode = code.trim().toUpperCase();
     try {
-      const res = await fetch('/api/coupons/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: cleanCode, subtotal: cartSubtotal }),
-      });
+      const res = await fetchWithTimeout(
+        '/api/coupons/validate',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: cleanCode, subtotal: cartSubtotal }),
+        },
+        8000
+      );
       const data = await res.json();
       if (res.ok && data.success) {
         const couponObj: Coupon = {
@@ -1087,29 +1230,37 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     onProgress?: (stage: 'creating' | 'initiating' | 'verifying' | 'unlocking') => void;
   }): Promise<{ order: Order; redirectUrl?: string }> => {
     onProgress?.('creating');
-    await Promise.all(cart.map((c) => syncBookToServer(c.book)));
+    await withTimeout(
+      Promise.all(cart.map((c) => syncBookToServer(c.book))),
+      4000,
+      'Catalog sync timeout'
+    ).catch(() => {});
     const authHeaders = await getAuthHeaders();
 
-    const response = await fetch('/api/orders/create', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders,
+    const response = await fetchWithTimeout(
+      '/api/orders/create',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
+        body: JSON.stringify({
+          customerName,
+          customerEmail,
+          customerPhone,
+          paymentMethod,
+          items: cart.map((c) => ({
+            id: c.book.id,
+            title: c.book.title,
+            quantity: c.quantity,
+          })),
+          couponCode: activeCoupon?.code,
+          currency: 'BDT',
+        }),
       },
-      body: JSON.stringify({
-        customerName,
-        customerEmail,
-        customerPhone,
-        paymentMethod,
-        items: cart.map((c) => ({
-          id: c.book.id,
-          title: c.book.title,
-          quantity: c.quantity,
-        })),
-        couponCode: activeCoupon?.code,
-        currency: 'BDT',
-      }),
-    });
+      15000
+    );
 
     const data = await response.json();
     if (!response.ok || !data.success) {
@@ -1144,11 +1295,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // PATH A: Free Edition (total === 0) -> Instant Server Claim & Immediate PDF Unlock
     if (!data.requiresPayment) {
       onProgress?.('unlocking');
-      const freeRes = await fetch('/api/orders/free-claim', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: data.orderId }),
-      });
+      const freeRes = await fetchWithTimeout(
+        '/api/orders/free-claim',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: data.orderId }),
+        },
+        12000
+      );
       const freeData = await freeRes.json();
       if (!freeRes.ok || !freeData.success || !freeData.order) {
         throw new Error(freeData.error || 'Could not claim free PDF edition.');
@@ -1176,14 +1331,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // PATH B: Paid Edition (total > 0) -> Automated Payment Gateway Initiation & Verification
     onProgress?.('initiating');
-    const initRes = await fetch('/api/payment/initiate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        orderId: data.orderId,
-        paymentMethod,
-      }),
-    });
+    const initRes = await fetchWithTimeout(
+      '/api/payment/initiate',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: data.orderId,
+          paymentMethod,
+        }),
+      },
+      15000
+    );
     const initData = await initRes.json();
     if (!initRes.ok || !initData.success) {
       throw new Error(initData.error || 'Unable to initiate automated payment gateway.');
@@ -1204,15 +1363,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await new Promise((resolve) => setTimeout(resolve, 450));
 
     onProgress?.('unlocking');
-    const verifyRes = await fetch('/api/payment/verify-automated', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        orderId: data.orderId,
-        verificationToken: initData.verificationToken,
-        paymentMethod,
-      }),
-    });
+    const verifyRes = await fetchWithTimeout(
+      '/api/payment/verify-automated',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: data.orderId,
+          verificationToken: initData.verificationToken,
+          paymentMethod,
+        }),
+      },
+      15000
+    );
     const verifyData = await verifyRes.json();
     if (!verifyRes.ok || !verifyData.success || !verifyData.order) {
       throw new Error(verifyData.error || 'Automated payment verification could not complete.');
@@ -1240,13 +1403,26 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const lookupOrder = async (orderId: string): Promise<Order | undefined> => {
     try {
       const authHeaders = await getAuthHeaders();
-      const res = await fetch(`/api/orders/${encodeURIComponent(orderId.trim())}`, {
-        headers: authHeaders,
-      });
+      const res = await fetchWithTimeout(
+        `/api/orders/${encodeURIComponent(orderId.trim())}`,
+        { headers: authHeaders },
+        10000
+      );
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.order) {
-          return data.order as Order;
+          const srvOrder = data.order as Order;
+          setOrders((prev) =>
+            prev.some((o) => o.id === srvOrder.id)
+              ? prev.map((o) => (o.id === srvOrder.id ? { ...o, ...srvOrder } : o))
+              : prev
+          );
+          setUserOrders((prev) =>
+            prev.some((o) => o.id === srvOrder.id)
+              ? prev.map((o) => (o.id === srvOrder.id ? { ...o, ...srvOrder } : o))
+              : prev
+          );
+          return srvOrder;
         }
       }
     } catch {}
@@ -1335,19 +1511,23 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     try {
       try {
-        const existingSnap = await getDoc(userDocRef);
+        const existingSnap = await withTimeout(getDoc(userDocRef), 4500, 'Profile lookup timeout');
         if (existingSnap.exists()) {
-          await updateDoc(userDocRef, {
-            displayName: cleanFields.displayName || '',
-            penName: cleanFields.penName || '',
-            phone: cleanFields.phone || '',
-            location: cleanFields.location || '',
-            bio: cleanFields.bio || '',
-            website: cleanFields.website || '',
-            updatedAt: now,
-          });
+          await withTimeout(
+            updateDoc(userDocRef, {
+              displayName: cleanFields.displayName || '',
+              penName: cleanFields.penName || '',
+              phone: cleanFields.phone || '',
+              location: cleanFields.location || '',
+              bio: cleanFields.bio || '',
+              website: cleanFields.website || '',
+              updatedAt: now,
+            }),
+            5000,
+            'Profile update timeout'
+          );
         } else {
-          await setDoc(userDocRef, nextProfile);
+          await withTimeout(setDoc(userDocRef, nextProfile), 5000, 'Profile save timeout');
         }
       } catch (err) {
         handleFirestoreError(err, OperationType.WRITE, `users/${currentUser.uid}`);

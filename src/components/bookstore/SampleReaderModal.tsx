@@ -1,13 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../../context/StoreContext';
-import { X, BookOpen, ChevronLeft, ChevronRight, ShoppingBag } from 'lucide-react';
+import { X, BookOpen, ChevronLeft, ChevronRight, ShoppingBag, Download } from 'lucide-react';
 
 export const SampleReaderModal: React.FC = () => {
-  const { previewSampleBook, setPreviewSampleBook, addToCart, logoIconColor } = useStore();
+  const {
+    previewSampleBook,
+    setPreviewSampleBook,
+    addToCart,
+    quickAcquireFreeBook,
+    logoIconColor,
+  } = useStore();
   const [activeChapterIndex, setActiveChapterIndex] = useState(0);
+
+  useEffect(() => {
+    setActiveChapterIndex(0);
+  }, [previewSampleBook?.id]);
 
   if (!previewSampleBook) return null;
 
+  const isFree = previewSampleBook.price === 0;
   const chapters = previewSampleBook.sampleChapters || [];
   const currentChapter = chapters[activeChapterIndex] || {
     title: 'Sample Excerpt',
@@ -27,7 +38,7 @@ export const SampleReaderModal: React.FC = () => {
           </div>
           <button
             onClick={() => setPreviewSampleBook(null)}
-            className="p-1.5 text-[#686B78] hover:text-[#171923] hover:bg-gray-100 rounded-full transition-colors"
+            className="p-1.5 text-[#686B78] hover:text-[#171923] hover:bg-gray-100 rounded-full transition-colors cursor-pointer"
             aria-label="Close reader"
           >
             <X className="w-5 h-5" />
@@ -75,7 +86,7 @@ export const SampleReaderModal: React.FC = () => {
               <button
                 disabled={activeChapterIndex === 0}
                 onClick={() => setActiveChapterIndex((prev) => Math.max(0, prev - 1))}
-                className="flex items-center gap-1 hover:text-[#171923] px-3 py-1.5 rounded-full border border-[#E8E9F0] disabled:opacity-30 disabled:cursor-not-allowed"
+                className="flex items-center gap-1 hover:text-[#171923] px-3 py-1.5 rounded-full border border-[#E8E9F0] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
               >
                 <ChevronLeft className="w-4 h-4" />
                 <span>Previous Excerpt</span>
@@ -86,7 +97,7 @@ export const SampleReaderModal: React.FC = () => {
               <button
                 disabled={activeChapterIndex === chapters.length - 1}
                 onClick={() => setActiveChapterIndex((prev) => Math.min(chapters.length - 1, prev + 1))}
-                className="flex items-center gap-1 hover:text-[#171923] px-3 py-1.5 rounded-full border border-[#E8E9F0] disabled:opacity-30 disabled:cursor-not-allowed"
+                className="flex items-center gap-1 hover:text-[#171923] px-3 py-1.5 rounded-full border border-[#E8E9F0] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
               >
                 <span>Next Excerpt</span>
                 <ChevronRight className="w-4 h-4" />
@@ -99,26 +110,49 @@ export const SampleReaderModal: React.FC = () => {
         {/* Reader Bottom Bar with circular buttons */}
         <div className="p-4 px-6 bg-[#FAFAFC] border-t border-[#E8E9F0] flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-xs text-[#686B78] text-center sm:text-left">
-            <span>Enjoying this chapter? Own the complete edition for </span>
-            <span className="font-semibold text-[#171D50]">৳{previewSampleBook.price} BDT</span>
+            {isFree ? (
+              <>
+                <span className="font-semibold text-emerald-700">Free Edition</span>
+                <span> · Instant PDF Access with zero payment steps</span>
+              </>
+            ) : (
+              <>
+                <span>Enjoying this chapter? Own the complete edition for </span>
+                <span className="font-semibold text-[#171D50]">৳{previewSampleBook.price} BDT</span>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setPreviewSampleBook(null)}
-              className="px-5 py-2 text-xs text-[#686B78] hover:text-[#171923] rounded-full border border-[#E8E9F0] transition-colors"
+              className="px-5 py-2 text-xs text-[#686B78] hover:text-[#171923] rounded-full border border-[#E8E9F0] transition-colors cursor-pointer"
             >
               Close Reader
             </button>
-            <button
-              onClick={() => {
-                addToCart(previewSampleBook, 1);
-                setPreviewSampleBook(null);
-              }}
-              className="px-6 py-2.5 bg-[#171D50] text-white text-xs font-semibold tracking-wide hover:bg-[#0f1338] transition-colors flex items-center gap-2 cursor-pointer shadow-xs rounded-full"
-            >
-              <ShoppingBag className="w-3.5 h-3.5" />
-              <span>Add Full Ebook to Bag</span>
-            </button>
+            {isFree ? (
+              <button
+                onClick={() => {
+                  const book = previewSampleBook;
+                  setPreviewSampleBook(null);
+                  quickAcquireFreeBook(book);
+                }}
+                className="px-6 py-2.5 bg-emerald-700 text-white text-xs font-semibold tracking-wide hover:bg-emerald-800 transition-colors flex items-center gap-2 cursor-pointer shadow-xs rounded-full"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Get Free PDF Now</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  addToCart(previewSampleBook, 1);
+                  setPreviewSampleBook(null);
+                }}
+                className="px-6 py-2.5 bg-[#171D50] text-white text-xs font-semibold tracking-wide hover:bg-[#0f1338] transition-colors flex items-center gap-2 cursor-pointer shadow-xs rounded-full"
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>Add Full Ebook to Bag</span>
+              </button>
+            )}
           </div>
         </div>
 
