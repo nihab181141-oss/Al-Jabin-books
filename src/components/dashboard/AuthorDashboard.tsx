@@ -74,6 +74,7 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
   const [editTitle, setEditTitle] = useState('');
   const [editSubtitle, setEditSubtitle] = useState('');
   const [editCategory, setEditCategory] = useState<'Personal Growth' | 'Mindset' | 'Productivity' | 'Fiction'>('Personal Growth');
+  const [editPricingMode, setEditPricingMode] = useState<'free' | 'paid'>('free');
   const [editPrice, setEditPrice] = useState('0');
   const [editDescription, setEditDescription] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
@@ -127,6 +128,7 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
     setEditTitle(book.title);
     setEditSubtitle(book.subtitle || '');
     setEditCategory(book.category);
+    setEditPricingMode(book.price === 0 ? 'free' : 'paid');
     setEditPrice(String(book.price));
     setEditDescription(book.description);
   };
@@ -136,11 +138,14 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
     if (!editingBook) return;
     setSavingEdit(true);
     try {
+      const nextPrice =
+        editPricingMode === 'free' ? 0 : Math.max(1, Math.round(Number(editPrice) || 1));
       await updatePublishedBook(editingBook.id, {
         title: editTitle,
         subtitle: editSubtitle,
         category: editCategory,
-        price: Number(editPrice) || 0,
+        pricingMode: editPricingMode,
+        price: nextPrice,
         description: editDescription,
       });
       setEditingBook(null);
@@ -525,8 +530,12 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
                             <td className="py-3.5 px-3 text-[#575A66] whitespace-nowrap">
                               {book.category}
                             </td>
-                            <td className="py-3.5 px-3 text-right font-mono tabular-nums text-[#171923] whitespace-nowrap">
-                              {book.price === 0 ? 'Free' : `৳${book.price.toLocaleString()}`}
+                            <td className="py-3.5 px-3 text-right font-mono tabular-nums whitespace-nowrap">
+                              {book.price === 0 ? (
+                                <span className="font-semibold text-emerald-700">Free</span>
+                              ) : (
+                                <span className="font-semibold text-[#171923]">৳{book.price.toLocaleString()}</span>
+                              )}
                             </td>
                             <td className="py-3.5 px-3 text-right font-mono tabular-nums text-[#171923]">
                               {stat?.unitsSold ?? 0}
@@ -929,40 +938,83 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-[#171923] mb-1">
-                    Category
-                  </label>
-                  <select
-                    value={editCategory}
-                    onChange={(e) =>
-                      setEditCategory(
-                        e.target.value as 'Personal Growth' | 'Mindset' | 'Productivity' | 'Fiction'
-                      )
-                    }
-                    className="w-full min-h-[42px] px-3 py-2 text-xs bg-[#FAFAFC] border border-[#E8E9F0] rounded-xl focus:bg-white focus:border-[#171D50] focus:outline-none"
+              <div>
+                <label className="block text-xs font-medium text-[#171923] mb-1">
+                  Category
+                </label>
+                <select
+                  value={editCategory}
+                  onChange={(e) =>
+                    setEditCategory(
+                      e.target.value as 'Personal Growth' | 'Mindset' | 'Productivity' | 'Fiction'
+                    )
+                  }
+                  className="w-full min-h-[42px] px-3 py-2 text-xs bg-[#FAFAFC] border border-[#E8E9F0] rounded-xl focus:bg-white focus:border-[#171D50] focus:outline-none"
+                >
+                  <option value="Personal Growth">Personal Growth</option>
+                  <option value="Mindset">Mindset</option>
+                  <option value="Productivity">Productivity</option>
+                  <option value="Fiction">Fiction</option>
+                </select>
+              </div>
+
+              <div className="space-y-2.5">
+                <label className="block text-xs font-medium text-[#171923]">
+                  Edition Pricing Mode
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditPricingMode('free');
+                      setEditPrice('0');
+                    }}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      editPricingMode === 'free'
+                        ? 'border-emerald-600 bg-emerald-50/70'
+                        : 'border-[#E8E9F0] bg-[#FAFAFC] hover:border-black/20'
+                    }`}
                   >
-                    <option value="Personal Growth">Personal Growth</option>
-                    <option value="Mindset">Mindset</option>
-                    <option value="Productivity">Productivity</option>
-                    <option value="Fiction">Fiction</option>
-                  </select>
+                    <div className="text-xs font-bold text-[#171923]">Free Edition</div>
+                    <div className="text-[11px] font-mono text-emerald-700 font-semibold">৳0 · Instant PDF</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditPricingMode('paid');
+                      if (!editPrice || Number(editPrice) <= 0) {
+                        setEditPrice('199');
+                      }
+                    }}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      editPricingMode === 'paid'
+                        ? 'border-[#171D50] bg-[#171D50]/[0.04]'
+                        : 'border-[#E8E9F0] bg-[#FAFAFC] hover:border-black/20'
+                    }`}
+                  >
+                    <div className="text-xs font-bold text-[#171923]">Paid Edition</div>
+                    <div className="text-[11px] font-mono text-[#171D50] font-semibold">
+                      {editPricingMode === 'paid' ? `৳${Number(editPrice) || 0}` : 'Set BDT Price'}
+                    </div>
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-[#171923] mb-1">
-                    Price (BDT · 0 = Free)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100000}
-                    value={editPrice}
-                    onChange={(e) => setEditPrice(e.target.value)}
-                    className="w-full min-h-[42px] px-3.5 py-2 text-xs bg-[#FAFAFC] border border-[#E8E9F0] rounded-xl focus:bg-white focus:border-[#171D50] focus:outline-none font-mono tabular-nums"
-                  />
-                </div>
+                {editPricingMode === 'paid' && (
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#575A66] mb-1">
+                      Price in BDT (min ৳1)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100000}
+                      required
+                      value={editPrice}
+                      onChange={(e) => setEditPrice(e.target.value)}
+                      className="w-full min-h-[42px] px-3.5 py-2 text-xs font-semibold bg-[#FAFAFC] border border-[#E8E9F0] rounded-xl focus:bg-white focus:border-[#171D50] focus:outline-none font-mono tabular-nums"
+                    />
+                  </div>
+                )}
               </div>
 
               <div>

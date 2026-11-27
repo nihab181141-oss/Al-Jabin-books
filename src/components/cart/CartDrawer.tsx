@@ -139,8 +139,8 @@ export const CartDrawer: React.FC = () => {
 
                       {/* Line Price & Remove */}
                       <div className="flex items-center gap-3">
-                        <span className="text-sm font-semibold text-[#171D50] tabular-nums">
-                          ৳{item.book.price * item.quantity}
+                        <span className={`text-sm font-semibold tabular-nums ${item.book.price === 0 ? 'text-emerald-700' : 'text-[#171D50]'}`}>
+                          {item.book.price === 0 ? 'Free' : `৳${item.book.price * item.quantity}`}
                         </span>
                         <button
                           onClick={() => removeFromCart(item.book.id)}
@@ -161,7 +161,8 @@ export const CartDrawer: React.FC = () => {
           {cart.length > 0 && (
             <div className="p-6 bg-[#FAFAFC] border-t border-[#E8E9F0] space-y-4">
               
-              {/* Coupon Form with rounded styling */}
+              {/* Coupon Form (only shown when subtotal > 0) */}
+              {cartSubtotal > 0 && (
               <form onSubmit={handleApplyCoupon} className="space-y-1.5">
                 <div className="flex gap-2">
                   <div className="relative flex-1">
@@ -210,14 +211,17 @@ export const CartDrawer: React.FC = () => {
                   </div>
                 )}
               </form>
+              )}
 
               {/* Subtotal Calculation */}
               <div className="space-y-1.5 text-xs text-[#686B78] pt-2 border-t border-[#E8E9F0] tabular-nums">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span className="font-medium text-[#171923]">৳{cartSubtotal}</span>
+                  <span className="font-medium text-[#171923]">
+                    {cartSubtotal === 0 ? 'Free' : `৳${cartSubtotal}`}
+                  </span>
                 </div>
-                {activeCoupon && (
+                {activeCoupon && cartSubtotal > 0 && (
                   <div className="flex justify-between text-emerald-700">
                     <span>Discount ({activeCoupon.discountPercentage}%)</span>
                     <span>-৳{discountAmount}</span>
@@ -225,7 +229,9 @@ export const CartDrawer: React.FC = () => {
                 )}
                 <div className="flex justify-between text-sm font-semibold text-[#171D50] pt-1 border-t border-[#E8E9F0]">
                   <span>Total Due</span>
-                  <span>৳{finalTotal} BDT</span>
+                  <span className={finalTotal === 0 ? 'text-emerald-700' : ''}>
+                    {finalTotal === 0 ? 'Free (৳0)' : `৳${finalTotal} BDT`}
+                  </span>
                 </div>
               </div>
 
@@ -235,9 +241,13 @@ export const CartDrawer: React.FC = () => {
                   setIsCartOpen(false);
                   setIsCheckoutOpen(true);
                 }}
-                className="w-full min-h-[46px] py-3 bg-[#171D50] text-white text-xs font-semibold tracking-widest uppercase hover:bg-[#0f1338] transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm rounded-full"
+                className={`w-full min-h-[46px] py-3 text-white text-xs font-semibold tracking-widest uppercase transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm rounded-full ${
+                  finalTotal === 0
+                    ? 'bg-emerald-700 hover:bg-emerald-800'
+                    : 'bg-[#171D50] hover:bg-[#0f1338]'
+                }`}
               >
-                <span>Proceed to Checkout</span>
+                <span>{finalTotal === 0 ? 'Claim Free PDFs Now' : 'Proceed to Checkout'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
 

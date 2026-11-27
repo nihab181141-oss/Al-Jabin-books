@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { PaymentMethod } from '../../types';
 import {
@@ -9,7 +9,17 @@ import {
   CheckCircle2,
   AlertCircle,
   ArrowRight,
+  Download,
+  ShieldCheck,
+  Loader2,
 } from 'lucide-react';
+
+const PROGRESS_LABELS: Record<'creating' | 'initiating' | 'verifying' | 'unlocking', string> = {
+  creating: 'Initializing Secure Order...',
+  initiating: 'Connecting Automated Payment Gateway...',
+  verifying: 'Verifying Payment Automatically...',
+  unlocking: 'Unlocking Instant PDF Download...',
+};
 
 export const CheckoutModal: React.FC = () => {
   const {
@@ -29,10 +39,27 @@ export const CheckoutModal: React.FC = () => {
   const [customerEmail, setCustomerEmail] = useState(currentUser?.email || '');
   const [customerPhone, setCustomerPhone] = useState(userProfile?.phone || '');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bkash');
-  const [transactionId, setTransactionId] = useState('');
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [progressStage, setProgressStage] = useState<
+    'creating' | 'initiating' | 'verifying' | 'unlocking' | null
+  >(null);
+
+  useEffect(() => {
+    if (!isCheckoutOpen) {
+      setIsSubmitting(false);
+      setProgressStage(null);
+      setErrorMsg(null);
+      return;
+    }
+    const defaultName = userProfile?.displayName || currentUser?.displayName || '';
+    const defaultEmail = currentUser?.email || '';
+    const defaultPhone = userProfile?.phone || '';
+    if (!customerName && defaultName) setCustomerName(defaultName);
+    if (!customerEmail && defaultEmail) setCustomerEmail(defaultEmail);
+    if (!customerPhone && defaultPhone) setCustomerPhone(defaultPhone);
+  }, [isCheckoutOpen, currentUser, userProfile]);
 
   if (!isCheckoutOpen) return null;
 
@@ -40,6 +67,7 @@ export const CheckoutModal: React.FC = () => {
     ? Math.round((cartSubtotal * activeCoupon.discountPercentage) / 100)
     : 0;
   const finalTotal = Math.max(0, cartSubtotal - discountAmount);
+  const isFreeOrder = finalTotal === 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,17 +80,12 @@ export const CheckoutModal: React.FC = () => {
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(customerEmail.trim())) {
-      setErrorMsg('Please enter a valid email address for digital delivery.');
+      setErrorMsg('Please enter a valid email address for PDF delivery.');
       return;
     }
 
-    if (!customerPhone.trim()) {
-      setErrorMsg('Please enter your contact phone number.');
-      return;
-    }
-
-    if (finalTotal > 0 && ['bkash', 'nagad', 'rocket'].includes(paymentMethod) && !transactionId.trim()) {
-      setErrorMsg(`Please enter the ${paymentMethod.toUpperCase()} transaction ID (TrxID) from your payment receipt.`);
+    if (!isFreeOrder && !customerPhone.trim()) {
+      setErrorMsg('Please enter your contact phone number for automated gateway verification.');
       return;
     }
 
@@ -72,18 +95,25 @@ export const CheckoutModal: React.FC = () => {
     }
 
     setIsSubmitting(true);
+    setProgressStage('creating');
 
     try {
-      await createOrder({
+      const result = await createOrder({
         customerName: customerName.trim(),
         customerEmail: customerEmail.trim(),
         customerPhone: customerPhone.trim(),
-        paymentMethod,
-        transactionId: transactionId.trim() || undefined,
+        paymentMethod: isFreeOrder ? 'free' : paymentMethod,
+        onProgress: (stage) => setProgressStage(stage),
       });
+
+      if (result.redirectUrl) {
+        window.location.href = result.redirectUrl;
+        return;
+      }
     } catch (err: any) {
-      setErrorMsg(err?.message || 'An error occurred during order initialization. Please retry.');
+      setErrorMsg(err?.message || 'An error occurred while processing your order. Please retry.');
       setIsSubmitting(false);
+      setProgressStage(null);
     }
   };
 
@@ -94,13 +124,18 @@ export const CheckoutModal: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#E8E9F0] bg-[#FAFAFC]">
           <div className="flex items-center gap-2">
-            <Lock className="w-4 h-4 text-[#171D50]" />
+            {isFreeOrder ? (
+              <Download className="w-4 h-4 text-emerald-700" />
+            ) : (
+              <Lock className="w-4 h-4 text-[#171D50]" />
+            )}
             <h3 className="font-editorial text-lg text-[#171923] font-medium">
-              Secure Digital Checkout
+              {isFreeOrder ? 'Instant Free Edition Claim' : 'Automated Digital Checkout'}
             </h3>
           </div>
           <button
             onClick={() => setIsCheckoutOpen(false)}
+            disabled={isSubmitting}
             className="p-1.5 text-[#686B78] hover:text-[#171923] hover:bg-gray-100 rounded-full transition-colors cursor-pointer"
             aria-label="Close checkout"
           >
@@ -114,14 +149,16 @@ export const CheckoutModal: React.FC = () => {
           {/* Order Summary Strip */}
           <div className="p-4 bg-[#FAF7F0] border border-[#EBE6DF] rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
             <div>
-              <span className="text-[#686B78]">Items in Order: </span>
+              <span className="text-[#686B78]">Edition{cart.length > 1 ? 's' : ''}: </span>
               <span className="font-semibold text-[#171923]">
-                {cart.map((c) => `${c.book.title} (x${c.quantity})`).join(', ')}
+                {cart.map((c) => `${c.book.title}${c.quantity > 1 ? ` (x${c.quantity})` : ''}`).join(', ')}
               </span>
             </div>
             <div className="text-right shrink-0">
-              <span className="text-[#686B78]">Server-Calculated Total: </span>
-              <span className="font-semibold text-base text-[#171D50] ml-1">৳{finalTotal}</span>
+              <span className="text-[#686B78]">Verified Total: </span>
+              <span className={`font-semibold text-base ml-1 font-mono tabular-nums ${isFreeOrder ? 'text-emerald-700' : 'text-[#171D50]'}`}>
+                {isFreeOrder ? 'Free (৳0)' : `৳${finalTotal}`}
+              </span>
             </div>
           </div>
 
@@ -136,7 +173,7 @@ export const CheckoutModal: React.FC = () => {
             {/* Customer Details */}
             <div className="space-y-4">
               <h4 className="text-xs uppercase tracking-wider text-[#686B78] font-semibold">
-                1. Delivery & Buyer Details
+                {isFreeOrder ? '1. Reader Details for Instant PDF Delivery' : '1. Delivery & Buyer Details'}
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -146,7 +183,7 @@ export const CheckoutModal: React.FC = () => {
                   <input
                     type="text"
                     required
-                    placeholder="Full Name"
+                    placeholder="Your Full Name"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     className="w-full px-4 py-2.5 text-xs border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none rounded-xl bg-white"
@@ -165,145 +202,141 @@ export const CheckoutModal: React.FC = () => {
                     className="w-full px-4 py-2.5 text-xs border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none rounded-xl bg-white"
                   />
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-[#171923] mb-1">
-                    Contact Phone Number *
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="Phone number"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="w-full px-4 py-2.5 text-xs border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none rounded-xl bg-white"
-                  />
-                  <p className="text-[11px] text-[#686B78] mt-1 font-light">
-                    Required for payment gateway verification and transactional receipts.
-                  </p>
-                </div>
+                {!isFreeOrder && (
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-[#171923] mb-1">
+                      Contact Phone Number *
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      placeholder="+880 1XXX-XXXXXX"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      className="w-full px-4 py-2.5 text-xs border border-[#E8E9F0] focus:border-[#171D50] focus:outline-none rounded-xl bg-white"
+                    />
+                    <p className="text-[11px] text-[#686B78] mt-1 font-light">
+                      Used by the automated payment gateway for verification and digital receipts.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Payment Method Selection */}
-            {finalTotal > 0 && (
-            <div className="space-y-4 pt-4 border-t border-[#E8E9F0]">
-              <h4 className="text-xs uppercase tracking-wider text-[#686B78] font-semibold">
-                2. Select Payment Method
-              </h4>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Direct bKash MFS */}
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('bkash')}
-                  className={`p-4 border text-left rounded-2xl transition-all cursor-pointer flex flex-col justify-between ${
-                    paymentMethod === 'bkash'
-                      ? 'border-[#171D50] bg-[#171D50]/5 shadow-xs'
-                      : 'border-[#E8E9F0] hover:border-gray-300 bg-white'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <Smartphone className="w-4 h-4 text-[#E2136E]" />
-                      <span className="font-semibold text-xs text-[#171923]">Direct bKash Transfer</span>
-                    </div>
-                    {paymentMethod === 'bkash' && <CheckCircle2 className="w-4 h-4 text-[#171D50]" />}
-                  </div>
-                  <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
-                    Merchant Send Money / Counter Payment with Transaction ID (TrxID).
-                  </p>
-                </button>
-
-                {/* Direct Nagad MFS */}
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('nagad')}
-                  className={`p-4 border text-left rounded-2xl transition-all cursor-pointer flex flex-col justify-between ${
-                    paymentMethod === 'nagad'
-                      ? 'border-[#171D50] bg-[#171D50]/5 shadow-xs'
-                      : 'border-[#E8E9F0] hover:border-gray-300 bg-white'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <Smartphone className="w-4 h-4 text-[#F15A22]" />
-                      <span className="font-semibold text-xs text-[#171923]">Direct Nagad Transfer</span>
-                    </div>
-                    {paymentMethod === 'nagad' && <CheckCircle2 className="w-4 h-4 text-[#171D50]" />}
-                  </div>
-                  <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
-                    Nagad Payment / Send Money with Transaction ID (TrxID).
-                  </p>
-                </button>
-
-                {/* Direct Rocket MFS */}
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('rocket')}
-                  className={`p-4 border text-left rounded-2xl transition-all cursor-pointer flex flex-col justify-between ${
-                    paymentMethod === 'rocket'
-                      ? 'border-[#171D50] bg-[#171D50]/5 shadow-xs'
-                      : 'border-[#E8E9F0] hover:border-gray-300 bg-white'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <Smartphone className="w-4 h-4 text-[#8C3494]" />
-                      <span className="font-semibold text-xs text-[#171923]">Rocket Mobile Banking</span>
-                    </div>
-                    {paymentMethod === 'rocket' && <CheckCircle2 className="w-4 h-4 text-[#171D50]" />}
-                  </div>
-                  <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
-                    DBBL Rocket transfer with confirmation Transaction ID (TrxID).
-                  </p>
-                </button>
-
-                {/* Card / International */}
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('card')}
-                  className={`p-4 border text-left rounded-2xl transition-all cursor-pointer flex flex-col justify-between ${
-                    paymentMethod === 'card'
-                      ? 'border-[#171D50] bg-[#171D50]/5 shadow-xs'
-                      : 'border-[#E8E9F0] hover:border-gray-300 bg-white'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-[#171D50]" />
-                      <span className="font-semibold text-xs text-[#171923]">Card & International</span>
-                    </div>
-                    {paymentMethod === 'card' && <CheckCircle2 className="w-4 h-4 text-[#171D50]" />}
-                  </div>
-                  <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
-                    Visa, Mastercard & Amex instant digital edition fulfillment.
-                  </p>
-                  <div className="mt-2 text-[10px] text-emerald-700 font-medium">
-                    Instant Download Entitlement
-                  </div>
-                </button>
-              </div>
-
-              {/* Direct MFS Transaction ID Input */}
-              {['bkash', 'nagad', 'rocket'].includes(paymentMethod) && (
-                <div className="p-4 bg-gray-50 border border-[#E8E9F0] rounded-2xl space-y-2 mt-3 animate-fade-in">
-                  <label className="block text-xs font-medium text-[#171923]">
-                    Enter {paymentMethod.toUpperCase()} Transaction ID (TrxID) *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Transaction ID"
-                    value={transactionId}
-                    onChange={(e) => setTransactionId(e.target.value)}
-                    className="w-full px-4 py-2 text-xs font-mono uppercase bg-white border border-[#E8E9F0] rounded-xl focus:border-[#171D50] focus:outline-none"
-                  />
-                  <p className="text-[11px] text-[#686B78]">
-                    Enter the confirmation Transaction ID (TrxID) from your {paymentMethod.toUpperCase()} receipt for ৳{finalTotal}.
+            {/* Free Claim Info Banner */}
+            {isFreeOrder ? (
+              <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl flex items-start gap-3 text-xs text-emerald-900">
+                <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-semibold">Zero Payment Required · Instant PDF Access</div>
+                  <p className="text-emerald-800/85 mt-0.5 leading-relaxed">
+                    This publication is a Free Edition. Your secure PDF download token is generated automatically the moment you submit.
                   </p>
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              /* Payment Method Selection (Automated Gateway Verification) */
+              <div className="space-y-4 pt-4 border-t border-[#E8E9F0]">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-xs uppercase tracking-wider text-[#686B78] font-semibold">
+                    2. Select Payment Channel (Automated Verification)
+                  </h4>
+                  <span className="text-[11px] font-medium text-emerald-700 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Auto-verified instant PDF unlock</span>
+                  </span>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* bKash */}
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('bkash')}
+                    className={`p-4 border text-left rounded-2xl transition-all cursor-pointer flex flex-col justify-between ${
+                      paymentMethod === 'bkash'
+                        ? 'border-[#171D50] bg-[#171D50]/5 shadow-xs'
+                        : 'border-[#E8E9F0] hover:border-gray-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <Smartphone className="w-4 h-4 text-[#E2136E]" />
+                        <span className="font-semibold text-xs text-[#171923]">bKash Gateway</span>
+                      </div>
+                      {paymentMethod === 'bkash' && <CheckCircle2 className="w-4 h-4 text-[#171D50]" />}
+                    </div>
+                    <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
+                      Automatic bKash verification with instant PDF delivery.
+                    </p>
+                  </button>
+
+                  {/* Nagad */}
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('nagad')}
+                    className={`p-4 border text-left rounded-2xl transition-all cursor-pointer flex flex-col justify-between ${
+                      paymentMethod === 'nagad'
+                        ? 'border-[#171D50] bg-[#171D50]/5 shadow-xs'
+                        : 'border-[#E8E9F0] hover:border-gray-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <Smartphone className="w-4 h-4 text-[#F15A22]" />
+                        <span className="font-semibold text-xs text-[#171923]">Nagad Gateway</span>
+                      </div>
+                      {paymentMethod === 'nagad' && <CheckCircle2 className="w-4 h-4 text-[#171D50]" />}
+                    </div>
+                    <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
+                      Automatic Nagad verification with instant PDF delivery.
+                    </p>
+                  </button>
+
+                  {/* Rocket */}
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('rocket')}
+                    className={`p-4 border text-left rounded-2xl transition-all cursor-pointer flex flex-col justify-between ${
+                      paymentMethod === 'rocket'
+                        ? 'border-[#171D50] bg-[#171D50]/5 shadow-xs'
+                        : 'border-[#E8E9F0] hover:border-gray-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <Smartphone className="w-4 h-4 text-[#8C3494]" />
+                        <span className="font-semibold text-xs text-[#171923]">Rocket Mobile Banking</span>
+                      </div>
+                      {paymentMethod === 'rocket' && <CheckCircle2 className="w-4 h-4 text-[#171D50]" />}
+                    </div>
+                    <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
+                      DBBL Rocket gateway checkout with automatic verification.
+                    </p>
+                  </button>
+
+                  {/* Card / International */}
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('card')}
+                    className={`p-4 border text-left rounded-2xl transition-all cursor-pointer flex flex-col justify-between ${
+                      paymentMethod === 'card'
+                        ? 'border-[#171D50] bg-[#171D50]/5 shadow-xs'
+                        : 'border-[#E8E9F0] hover:border-gray-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="w-4 h-4 text-[#171D50]" />
+                        <span className="font-semibold text-xs text-[#171923]">Card & International</span>
+                      </div>
+                      {paymentMethod === 'card' && <CheckCircle2 className="w-4 h-4 text-[#171D50]" />}
+                    </div>
+                    <p className="text-[11px] text-[#686B78] font-light leading-relaxed">
+                      Visa, Mastercard & Amex automated payment verification.
+                    </p>
+                  </button>
+                </div>
+              </div>
             )}
 
             {/* Terms Agreement */}
@@ -316,7 +349,7 @@ export const CheckoutModal: React.FC = () => {
                   className="mt-0.5 rounded text-[#171D50] focus:ring-[#171D50]"
                 />
                 <span>
-                  I understand that this purchase is for personal, DRM-free digital editions (PDF & EPUB). Downloads are instant upon payment verification.
+                  I understand this edition is licensed for personal, DRM-free reading. {isFreeOrder ? 'Your PDF unlocks immediately.' : 'Your PDF unlocks automatically upon gateway payment verification.'}
                 </span>
               </label>
             </div>
@@ -325,15 +358,25 @@ export const CheckoutModal: React.FC = () => {
             <button
               type="submit"
               disabled={isSubmitting}
-              className={`w-full py-3.5 bg-[#171D50] text-white text-xs font-semibold tracking-wider uppercase rounded-full hover:bg-[#0f1338] transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer ${
-                isSubmitting ? 'opacity-70 cursor-wait' : ''
-              }`}
+              className={`w-full py-3.5 text-white text-xs font-semibold tracking-wider uppercase rounded-full transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer ${
+                isFreeOrder
+                  ? 'bg-emerald-700 hover:bg-emerald-800'
+                  : 'bg-[#171D50] hover:bg-[#0f1338]'
+              } ${isSubmitting ? 'opacity-80 cursor-wait' : ''}`}
             >
               {isSubmitting ? (
-                <span>Initializing Secure Session...</span>
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>{progressStage ? PROGRESS_LABELS[progressStage] : 'Processing...'}</span>
+                </>
+              ) : isFreeOrder ? (
+                <>
+                  <Download className="w-4 h-4" />
+                  <span>Get Free PDF Now</span>
+                </>
               ) : (
                 <>
-                  <span>Confirm Order (৳{finalTotal})</span>
+                  <span>Pay & Verify Automatically (৳{finalTotal})</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}

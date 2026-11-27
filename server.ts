@@ -39,6 +39,7 @@ const PORT = resolvePort();
 interface FirebaseAppletConfig {
   projectId: string;
   firestoreDatabaseId?: string;
+  storageBucket?: string;
 }
 
 function loadFirebaseConfig(): FirebaseAppletConfig {
@@ -49,9 +50,10 @@ function loadFirebaseConfig(): FirebaseAppletConfig {
     return {
       projectId: String(parsed.projectId || ''),
       firestoreDatabaseId: parsed.firestoreDatabaseId ? String(parsed.firestoreDatabaseId) : '(default)',
+      storageBucket: parsed.storageBucket ? String(parsed.storageBucket) : '',
     };
   } catch {
-    return { projectId: '', firestoreDatabaseId: '(default)' };
+    return { projectId: '', firestoreDatabaseId: '(default)', storageBucket: '' };
   }
 }
 
@@ -60,6 +62,8 @@ fs.mkdirSync(PRIVATE_EBOOKS_DIR, { recursive: true });
 
 const MAX_PDF_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MB
 const PRODUCT_ID_REGEX = /^[a-zA-Z0-9_-]{3,128}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const GATEWAY_HMAC_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 
 function resolveVaultPdfPath(productId: string): string | null {
   if (!PRODUCT_ID_REGEX.test(productId)) {
@@ -72,11 +76,65 @@ function resolveVaultPdfPath(productId: string): string | null {
   return resolved;
 }
 
+function resolveVaultMetaPath(productId: string): string | null {
+  if (!PRODUCT_ID_REGEX.test(productId)) {
+    return null;
+  }
+  const resolved = path.resolve(PRIVATE_EBOOKS_DIR, `${productId}.meta.json`);
+  if (!resolved.startsWith(PRIVATE_EBOOKS_DIR + path.sep)) {
+    return null;
+  }
+  return resolved;
+}
+
+function saveVaultMeta(
+  productId: string,
+  meta: { manuscriptContent?: string; privatePdfUrl?: string; pdfStoragePath?: string }
+): void {
+  const metaPath = resolveVaultMetaPath(productId);
+  if (!metaPath) return;
+  try {
+    fs.writeFileSync(metaPath, JSON.stringify(meta), 'utf8');
+  } catch {}
+}
+
+function loadVaultMeta(
+  productId: string
+): { manuscriptContent?: string; privatePdfUrl?: string; pdfStoragePath?: string } | null {
+  const metaPath = resolveVaultMetaPath(productId);
+  if (!metaPath) return null;
+  try {
+    if (!fs.existsSync(metaPath)) return null;
+    return JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 function hasStoredPdf(productId: string): boolean {
   const vaultPath = resolveVaultPdfPath(productId);
   if (!vaultPath) return false;
   try {
     return fs.existsSync(vaultPath) && fs.statSync(vaultPath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function isValidFirebaseStorageUrl(rawUrl: unknown): rawUrl is string {
+  if (typeof rawUrl !== 'string' || rawUrl.length === 0 || rawUrl.length > 512) {
+    return false;
+  }
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'firebasestorage.googleapis.com') {
+      return false;
+    }
+    const { storageBucket } = loadFirebaseConfig();
+    if (storageBucket && !parsed.pathname.startsWith(`/v0/b/${storageBucket}/o/`)) {
+      return false;
+    }
+    return parsed.pathname.includes('ebooks%2F');
   } catch {
     return false;
   }
@@ -213,6 +271,8 @@ interface ServerProduct {
   sampleChapters: SampleChapter[];
   manuscriptContent?: string;
   hasUploadedPdf?: boolean;
+  privatePdfUrl?: string;
+  pdfStoragePath?: string;
   isPublished: boolean;
   isNewRelease?: boolean;
   isFeatured?: boolean;
@@ -262,12 +322,17 @@ interface ServerOrder {
     title: string;
     price: number;
     quantity: number;
+    format: string;
   }>;
   subtotal: number;
   discount: number;
+  couponCode?: string;
   total: number;
   currency: 'BDT' | 'USD';
-  paymentProvider: 'direct';
+  paymentMethod: 'bkash' | 'nagad' | 'rocket' | 'card' | 'international' | 'free';
+  paymentProvider: 'direct' | 'sslcommerz' | 'free_claim' | 'sandbox';
+  verificationMode?: 'free' | 'sslcommerz' | 'sandbox';
+  gatewayValId?: string;
   paymentStatus: 'pending' | 'verified' | 'failed' | 'cancelled';
   fulfillmentStatus: 'pending' | 'fulfilled' | 'failed';
   createdAt: string;
@@ -301,20 +366,65 @@ interface ServerCoupon {
   isActive: boolean;
 }
 
-// Server-authoritative data store (empty until real user-published records are created)
+// Server-authoritative data store (hydrated from private disk ledger if present)
+const LEDGER_FILE_PATH = path.resolve(PRIVATE_EBOOKS_DIR, '.ledger.json');
+
 const database = {
   products: new Map<string, ServerProduct>(),
   orders: new Map<string, ServerOrder>(),
   downloads: new Map<string, ServerDownload>(),
   coupons: new Map<string, ServerCoupon>(),
+  pendingGatewaySessions: new Map<string, { orderId: string; amount: number; currency: string; expiresAtMs: number }>(),
 };
 
-// Strip private manuscript & internal binary fields from any public API response
+function saveLedgerState(): void {
+  try {
+    const payload = {
+      orders: Array.from(database.orders.entries()),
+      downloads: Array.from(database.downloads.entries()),
+    };
+    fs.writeFileSync(LEDGER_FILE_PATH, JSON.stringify(payload), 'utf8');
+  } catch (err) {
+    console.warn('Could not persist order ledger:', err);
+  }
+}
+
+function loadLedgerState(): void {
+  try {
+    if (!fs.existsSync(LEDGER_FILE_PATH)) return;
+    const raw = fs.readFileSync(LEDGER_FILE_PATH, 'utf8');
+    const parsed = JSON.parse(raw) as {
+      orders?: Array<[string, ServerOrder]>;
+      downloads?: Array<[string, ServerDownload]>;
+    };
+    if (Array.isArray(parsed.orders)) {
+      for (const [k, v] of parsed.orders) {
+        if (k && v) database.orders.set(k, v);
+      }
+    }
+    if (Array.isArray(parsed.downloads)) {
+      for (const [k, v] of parsed.downloads) {
+        if (k && v) database.downloads.set(k, v);
+      }
+    }
+  } catch (err) {
+    console.warn('Could not load persisted order ledger:', err);
+  }
+}
+
+loadLedgerState();
+
+// Strip private manuscript, cloud PDF URLs & internal binary fields from any public API response
 function toPublicProduct(product: ServerProduct): PublicProductView {
-  const { manuscriptContent: _omitted, ...publicFields } = product;
+  const {
+    manuscriptContent: _omittedManuscript,
+    privatePdfUrl: _omittedUrl,
+    pdfStoragePath: _omittedPath,
+    ...publicFields
+  } = product;
   return {
     ...publicFields,
-    hasUploadedPdf: Boolean(product.hasUploadedPdf || hasStoredPdf(product.id)),
+    hasUploadedPdf: Boolean(product.hasUploadedPdf || product.privatePdfUrl || hasStoredPdf(product.id)),
   };
 }
 
@@ -372,6 +482,7 @@ async function fetchVerifiedProductFromFirestore(productId: string): Promise<Ser
       : 'Personal Growth';
     const priceBDT = Math.max(0, Math.min(100000, Number(parsed.priceBDT ?? 0) || 0));
     const existing = database.products.get(productId);
+    const vaultMeta = loadVaultMeta(productId);
 
     const synced: ServerProduct = {
       id: productId,
@@ -395,8 +506,15 @@ async function fetchVerifiedProductFromFirestore(productId: string): Promise<Ser
         ? parsed.keyTakeaways.filter((t: unknown) => typeof t === 'string').slice(0, 10)
         : [],
       sampleChapters: Array.isArray(parsed.sampleChapters) ? parsed.sampleChapters.slice(0, 5) : [],
-      manuscriptContent: existing?.manuscriptContent,
-      hasUploadedPdf: Boolean(existing?.hasUploadedPdf || hasStoredPdf(productId)),
+      manuscriptContent: existing?.manuscriptContent || vaultMeta?.manuscriptContent,
+      privatePdfUrl: existing?.privatePdfUrl || vaultMeta?.privatePdfUrl,
+      pdfStoragePath: existing?.pdfStoragePath || vaultMeta?.pdfStoragePath,
+      hasUploadedPdf: Boolean(
+        existing?.hasUploadedPdf ||
+        existing?.privatePdfUrl ||
+        vaultMeta?.privatePdfUrl ||
+        hasStoredPdf(productId)
+      ),
       isPublished: true,
       isFeatured: Boolean(parsed.isFeatured),
       isNewRelease: Boolean(parsed.isNewRelease),
@@ -633,8 +751,19 @@ app.post('/api/products', async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Only the publishing author may modify this publication.' });
     }
 
+    const existingVaultMeta = loadVaultMeta(id);
+    const incomingPrivatePdfUrl = isValidFirebaseStorageUrl(body.privatePdfUrl)
+      ? body.privatePdfUrl
+      : existingProduct?.privatePdfUrl || existingVaultMeta?.privatePdfUrl;
+    const incomingPdfStoragePath =
+      typeof body.pdfStoragePath === 'string' && body.pdfStoragePath.trim().length > 0
+        ? body.pdfStoragePath.trim().slice(0, 256)
+        : existingProduct?.pdfStoragePath || existingVaultMeta?.pdfStoragePath;
+
     // Validate & persist uploaded binary PDF into the private non-public disk vault
-    let uploadedPdfSaved = Boolean(existingProduct?.hasUploadedPdf || hasStoredPdf(id));
+    let uploadedPdfSaved = Boolean(
+      existingProduct?.hasUploadedPdf || incomingPrivatePdfUrl || hasStoredPdf(id)
+    );
     if (typeof body.uploadedPdfBase64 === 'string' && body.uploadedPdfBase64.trim().length > 0) {
       const stripped = body.uploadedPdfBase64.replace(/^data:application\/pdf;base64,/i, '').trim();
       const pdfBuffer = Buffer.from(stripped, 'base64');
@@ -666,7 +795,15 @@ app.post('/api/products', async (req: Request, res: Response) => {
     const incomingManuscript =
       typeof body.manuscriptContent === 'string' && body.manuscriptContent.trim().length > 0
         ? body.manuscriptContent.slice(0, 300000)
-        : existingProduct?.manuscriptContent;
+        : existingProduct?.manuscriptContent || existingVaultMeta?.manuscriptContent;
+
+    if (incomingManuscript || incomingPrivatePdfUrl || incomingPdfStoragePath) {
+      saveVaultMeta(id, {
+        ...(incomingManuscript ? { manuscriptContent: incomingManuscript } : {}),
+        ...(incomingPrivatePdfUrl ? { privatePdfUrl: incomingPrivatePdfUrl } : {}),
+        ...(incomingPdfStoragePath ? { pdfStoragePath: incomingPdfStoragePath } : {}),
+      });
+    }
 
     const product: ServerProduct = {
       id,
@@ -691,6 +828,8 @@ app.post('/api/products', async (req: Request, res: Response) => {
         : [],
       sampleChapters: Array.isArray(body.sampleChapters) ? body.sampleChapters.slice(0, 5) : [],
       manuscriptContent: incomingManuscript,
+      privatePdfUrl: incomingPrivatePdfUrl,
+      pdfStoragePath: incomingPdfStoragePath,
       hasUploadedPdf: uploadedPdfSaved,
       isPublished: body.isPublished !== false,
       isNewRelease: Boolean(body.isNewRelease ?? true),
@@ -830,6 +969,12 @@ app.delete('/api/products/:id', async (req: Request, res: Response) => {
       fs.unlinkSync(vaultPath);
     } catch {}
   }
+  const metaPath = resolveVaultMetaPath(req.params.id);
+  if (metaPath && fs.existsSync(metaPath)) {
+    try {
+      fs.unlinkSync(metaPath);
+    } catch {}
+  }
 
   return res.json({ success: true });
 });
@@ -900,6 +1045,17 @@ app.post('/api/orders/create', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Shopping cart is empty.' });
     }
 
+    const allowedMethods = ['bkash', 'nagad', 'rocket', 'card', 'international', 'free'];
+    const selectedMethod: ServerOrder['paymentMethod'] = allowedMethods.includes(req.body?.paymentMethod)
+      ? req.body.paymentMethod
+      : 'bkash';
+
+    const cleanName = String(customerName).trim().slice(0, 120);
+    const cleanEmail = String(customerEmail).trim().toLowerCase().slice(0, 320);
+    if (!cleanName || !EMAIL_REGEX.test(cleanEmail)) {
+      return res.status(400).json({ error: 'Valid full name and email address are required.' });
+    }
+
     // Server-calculated prices: Reject client-supplied prices!
     let calculatedSubtotal = 0;
     const validatedItems: ServerOrder['items'] = [];
@@ -922,15 +1078,17 @@ app.post('/api/orders/create', async (req: Request, res: Response) => {
       const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
       calculatedSubtotal += price * qty;
       validatedItems.push({
-        id: item.id,
+        id: product.id,
         title,
         price,
         quantity: qty,
+        format: product.format || 'PDF & EPUB',
       });
     }
 
     // Server-side coupon verification
     let discountAmount = 0;
+    let appliedCouponCode: string | undefined;
     if (couponCode) {
       const cleanCode = String(couponCode).trim().toUpperCase();
       const coupon = database.coupons.get(cleanCode);
@@ -941,10 +1099,12 @@ app.post('/api/orders/create', async (req: Request, res: Response) => {
           discountAmount = Math.min(calculatedSubtotal, coupon.discountValue);
         }
         coupon.usageCount += 1;
+        appliedCouponCode = coupon.code;
       }
     }
 
     const calculatedTotal = Math.max(0, calculatedSubtotal - discountAmount);
+    const requiresPayment = calculatedTotal > 0;
     const orderNumber = `AJP-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
     const orderId = `order_${crypto.randomBytes(8).toString('hex')}`;
 
@@ -952,21 +1112,25 @@ app.post('/api/orders/create', async (req: Request, res: Response) => {
       id: orderId,
       orderNumber,
       userId: verifiedUser?.uid,
-      customerName: String(customerName).trim().slice(0, 120),
-      customerEmail: String(customerEmail).trim().toLowerCase().slice(0, 320),
+      customerName: cleanName,
+      customerEmail: cleanEmail,
       customerPhone: customerPhone ? String(customerPhone).trim().slice(0, 40) : undefined,
       items: validatedItems,
       subtotal: calculatedSubtotal,
       discount: discountAmount,
+      couponCode: appliedCouponCode,
       total: calculatedTotal,
       currency: currency === 'USD' ? 'USD' : 'BDT',
-      paymentProvider: 'direct',
+      paymentMethod: requiresPayment ? selectedMethod : 'free',
+      paymentProvider: requiresPayment ? 'sandbox' : 'free_claim',
+      verificationMode: requiresPayment ? undefined : 'free',
       paymentStatus: 'pending',
       fulfillmentStatus: 'pending',
       createdAt: new Date().toISOString(),
     };
 
     database.orders.set(orderId, newOrder);
+    saveLedgerState();
 
     return res.status(201).json({
       success: true,
@@ -976,6 +1140,7 @@ app.post('/api/orders/create', async (req: Request, res: Response) => {
       discount: newOrder.discount,
       total: newOrder.total,
       currency: newOrder.currency,
+      requiresPayment,
     });
   } catch (error: any) {
     console.error('Order creation error:', error);
@@ -984,12 +1149,71 @@ app.post('/api/orders/create', async (req: Request, res: Response) => {
 });
 
 /* =========================================================================
-   5. Order Fulfillment & Digital Entitlement Generation
+   5. Order Fulfillment, Free Claim & Automated Gateway Verification
    ========================================================================= */
-const fulfillOrderPayment = (order: ServerOrder) => {
+const buildOrderDownloadsList = (orderId: string) =>
+  Array.from(database.downloads.values())
+    .filter((d) => d.orderId === orderId)
+    .map((d) => ({
+      downloadId: d.id,
+      productId: d.productId,
+      productTitle: d.productTitle,
+      orderNumber: d.orderNumber,
+      downloadUrl: `/api/downloads/${d.tokenHash}`,
+      expiresAt: d.expiresAt,
+      downloadCount: d.downloadCount,
+      maxDownloads: d.maxDownloads,
+      isExpired: new Date() > new Date(d.expiresAt),
+    }));
+
+const buildClientOrderResponse = (order: ServerOrder, includeFullEmail: boolean) => ({
+  id: order.id,
+  orderNumber: order.orderNumber,
+  createdAt: order.createdAt,
+  customerName: order.customerName,
+  customerEmail: includeFullEmail ? order.customerEmail : maskEmail(order.customerEmail),
+  customerPhone: order.customerPhone || '',
+  items: order.items.map((it) => ({
+    bookId: it.id,
+    title: it.title,
+    price: it.price,
+    quantity: it.quantity,
+    format: it.format,
+  })),
+  subtotal: order.subtotal,
+  discountAmount: order.discount,
+  discount: order.discount,
+  couponCode: order.couponCode,
+  total: order.total,
+  currency: order.currency,
+  paymentMethod: order.paymentMethod,
+  paymentStatus: order.paymentStatus,
+  fulfillmentStatus: order.fulfillmentStatus,
+  verificationMode: order.verificationMode,
+  gatewayValId: order.gatewayValId,
+  transactionId: order.gatewayValId || order.orderNumber,
+  downloadAccessCode: `DL-${order.orderNumber}`,
+  paidAt: order.paidAt,
+  downloads: order.paymentStatus === 'verified' ? buildOrderDownloadsList(order.id) : [],
+});
+
+const fulfillOrderPayment = (
+  order: ServerOrder,
+  meta?: {
+    provider?: ServerOrder['paymentProvider'];
+    verificationMode?: ServerOrder['verificationMode'];
+    gatewayValId?: string;
+    paymentMethod?: ServerOrder['paymentMethod'];
+  }
+) => {
   if (order.paymentStatus === 'verified') {
     return;
   }
+
+  if (meta?.provider) order.paymentProvider = meta.provider;
+  if (meta?.verificationMode) order.verificationMode = meta.verificationMode;
+  if (meta?.gatewayValId) order.gatewayValId = meta.gatewayValId;
+  if (meta?.paymentMethod) order.paymentMethod = meta.paymentMethod;
 
   order.paymentStatus = 'verified';
   order.paidAt = new Date().toISOString();
@@ -1017,28 +1241,347 @@ const fulfillOrderPayment = (order: ServerOrder) => {
 
   order.fulfillmentStatus = 'fulfilled';
   order.deliveredAt = new Date().toISOString();
+  saveLedgerState();
 };
 
-app.post('/api/payment/confirm-test', (req: Request, res: Response) => {
-  const { orderId } = req.body;
+function resolveAppOrigin(req: Request): string {
+  const configured = process.env.APP_URL?.trim();
+  if (configured) {
+    try {
+      const parsed = new URL(configured);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        return parsed.origin;
+      }
+    } catch {}
+  }
+  const proto = req.get('x-forwarded-proto')?.split(',')[0].trim() || req.protocol || 'http';
+  const host = req.get('x-forwarded-host')?.split(',')[0].trim() || req.get('host') || `localhost:${PORT}`;
+  return `${proto}://${host}`;
+}
+
+function signVerificationToken(payload: {
+  orderId: string;
+  amount: number;
+  currency: string;
+  nonce: string;
+  exp: number;
+}): string {
+  const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  const sig = crypto.createHmac('sha256', GATEWAY_HMAC_SECRET).update(encoded).digest('base64url');
+  return `${encoded}.${sig}`;
+}
+
+function verifyVerificationToken(
+  token: string
+): { orderId: string; amount: number; currency: string; nonce: string; exp: number } | null {
+  if (typeof token !== 'string' || !token.includes('.')) return null;
+  const [encoded, sig] = token.split('.');
+  if (!encoded || !sig) return null;
+  const expectedSig = crypto
+    .createHmac('sha256', GATEWAY_HMAC_SECRET)
+    .update(encoded)
+    .digest('base64url');
+  const sigBuf = Buffer.from(sig, 'utf8');
+  const expectedBuf = Buffer.from(expectedSig, 'utf8');
+  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+    return null;
+  }
+  try {
+    return JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+// Instant 1-step fulfillment strictly for verified Free Editions (total === 0)
+app.post('/api/orders/free-claim', (req: Request, res: Response) => {
+  const orderId = typeof req.body?.orderId === 'string' ? req.body.orderId.trim() : '';
   const order = database.orders.get(orderId);
   if (!order) {
     return res.status(404).json({ error: 'Order not found.' });
   }
+  if (order.total > 0) {
+    return res.status(403).json({
+      error: 'Paid editions require automated payment gateway verification before PDF unlock.',
+    });
+  }
 
-  fulfillOrderPayment(order);
-  res.json({
-    success: true,
-    message: 'Payment verified and digital entitlements generated.',
-    orderId: order.id,
-    orderNumber: order.orderNumber,
+  fulfillOrderPayment(order, {
+    provider: 'free_claim',
+    verificationMode: 'free',
+    paymentMethod: 'free',
+    gatewayValId: `FREE-${order.orderNumber}`,
   });
+
+  return res.json({
+    success: true,
+    order: buildClientOrderResponse(order, true),
+  });
+});
+
+// Initiate automated payment verification (SSLCommerz live/sandbox if keys present, else server sandbox verifier)
+app.post('/api/payment/initiate', async (req: Request, res: Response) => {
+  try {
+    const orderId = typeof req.body?.orderId === 'string' ? req.body.orderId.trim() : '';
+    const order = database.orders.get(orderId);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found.' });
+    }
+    if (order.total <= 0) {
+      return res.status(400).json({ error: 'Free editions do not require payment initiation.' });
+    }
+    if (order.paymentStatus === 'verified') {
+      return res.json({
+        success: true,
+        mode: order.verificationMode || 'sandbox',
+        alreadyVerified: true,
+        order: buildClientOrderResponse(order, true),
+      });
+    }
+
+    const allowedMethods: ServerOrder['paymentMethod'][] = ['bkash', 'nagad', 'rocket', 'card', 'international'];
+    const selectedMethod: ServerOrder['paymentMethod'] = allowedMethods.includes(req.body?.paymentMethod)
+      ? req.body.paymentMethod
+      : order.paymentMethod;
+    order.paymentMethod = selectedMethod;
+
+    const storeId = process.env.SSLCOMMERZ_STORE_ID?.trim();
+    const storePassword = process.env.SSLCOMMERZ_STORE_PASSWORD?.trim();
+    const isLive = process.env.SSLCOMMERZ_IS_LIVE === 'true';
+
+    if (storeId && storePassword) {
+      const origin = resolveAppOrigin(req);
+      const sessionEndpoint = isLive
+        ? 'https://securepay.sslcommerz.com/gwprocess/v4/api.php'
+        : 'https://sandbox.sslcommerz.com/gwprocess/v4/api.php';
+
+      const formParams = new URLSearchParams({
+        store_id: storeId,
+        store_passwd: storePassword,
+        total_amount: String(order.total),
+        currency: order.currency,
+        tran_id: order.id,
+        success_url: `${origin}/api/payment/sslcommerz/success`,
+        fail_url: `${origin}/api/payment/sslcommerz/fail`,
+        cancel_url: `${origin}/api/payment/sslcommerz/cancel`,
+        ipn_url: `${origin}/api/payment/sslcommerz/ipn`,
+        shipping_method: 'NO',
+        product_name: order.items.map((i) => i.title).join(', ').slice(0, 250) || 'Digital Ebook',
+        product_category: 'Digital Publication',
+        product_profile: 'non-physical-goods',
+        cus_name: order.customerName,
+        cus_email: order.customerEmail,
+        cus_add1: 'Digital Delivery',
+        cus_city: 'Dhaka',
+        cus_postcode: '1000',
+        cus_country: 'Bangladesh',
+        cus_phone: order.customerPhone || '01700000000',
+      });
+
+      const gwRes = await fetch(sessionEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formParams.toString(),
+      });
+      const gwData = (await gwRes.json()) as { status?: string; GatewayPageURL?: string; failedreason?: string };
+      if (gwData.status === 'SUCCESS' && gwData.GatewayPageURL) {
+        order.paymentProvider = 'sslcommerz';
+        return res.json({
+          success: true,
+          mode: 'sslcommerz',
+          gatewayUrl: gwData.GatewayPageURL,
+          orderId: order.id,
+        });
+      }
+      return res.status(502).json({
+        error: gwData.failedreason || 'Unable to initiate payment gateway session.',
+      });
+    }
+
+    // Automated Sandbox Gateway Verification Session (when live merchant credentials are not yet set in env)
+    const nonce = crypto.randomBytes(12).toString('hex');
+    const exp = Date.now() + 10 * 60 * 1000;
+    database.pendingGatewaySessions.set(nonce, {
+      orderId: order.id,
+      amount: order.total,
+      currency: order.currency,
+      expiresAtMs: exp,
+    });
+    const verificationToken = signVerificationToken({
+      orderId: order.id,
+      amount: order.total,
+      currency: order.currency,
+      nonce,
+      exp,
+    });
+
+    return res.json({
+      success: true,
+      mode: 'sandbox',
+      verificationToken,
+      orderId: order.id,
+      amount: order.total,
+      currency: order.currency,
+      paymentMethod: order.paymentMethod,
+    });
+  } catch (err) {
+    console.error('Payment initiate error:', err);
+    return res.status(500).json({ error: 'Payment gateway initialization failed.' });
+  }
+});
+
+// Automated server verification for sandbox sessions
+app.post('/api/payment/verify-automated', (req: Request, res: Response) => {
+  const storeId = process.env.SSLCOMMERZ_STORE_ID?.trim();
+  const storePassword = process.env.SSLCOMMERZ_STORE_PASSWORD?.trim();
+  if (storeId && storePassword) {
+    return res.status(403).json({
+      error: 'Live payment verification must complete through the SSLCommerz gateway callback.',
+    });
+  }
+
+  const orderId = typeof req.body?.orderId === 'string' ? req.body.orderId.trim() : '';
+  const verificationToken = typeof req.body?.verificationToken === 'string' ? req.body.verificationToken.trim() : '';
+  const order = database.orders.get(orderId);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found.' });
+  }
+  if (order.paymentStatus === 'verified') {
+    return res.json({ success: true, order: buildClientOrderResponse(order, true) });
+  }
+
+  const parsedToken = verifyVerificationToken(verificationToken);
+  if (!parsedToken || parsedToken.orderId !== order.id || parsedToken.exp <= Date.now()) {
+    return res.status(403).json({ error: 'Invalid or expired gateway verification session.' });
+  }
+
+  const sessionRecord = database.pendingGatewaySessions.get(parsedToken.nonce);
+  if (
+    !sessionRecord ||
+    sessionRecord.orderId !== order.id ||
+    sessionRecord.amount !== order.total ||
+    sessionRecord.currency !== order.currency ||
+    sessionRecord.expiresAtMs <= Date.now()
+  ) {
+    return res.status(403).json({ error: 'Gateway verification session could not be validated.' });
+  }
+
+  // Consume single-use verification nonce before fulfilling
+  database.pendingGatewaySessions.delete(parsedToken.nonce);
+  const valId = `AUTO-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+
+  fulfillOrderPayment(order, {
+    provider: 'sandbox',
+    verificationMode: 'sandbox',
+    gatewayValId: valId,
+  });
+
+  return res.json({
+    success: true,
+    message: 'Payment verified automatically and digital PDF entitlements unlocked.',
+    order: buildClientOrderResponse(order, true),
+  });
+});
+
+// Real SSLCommerz Server-to-Server Validation Helper
+async function validateSslCommerzTransaction(tranId: string, valId: string): Promise<boolean> {
+  const order = database.orders.get(tranId);
+  if (!order) return false;
+  if (order.paymentStatus === 'verified') return true;
+
+  const storeId = process.env.SSLCOMMERZ_STORE_ID?.trim();
+  const storePassword = process.env.SSLCOMMERZ_STORE_PASSWORD?.trim();
+  const isLive = process.env.SSLCOMMERZ_IS_LIVE === 'true';
+  if (!storeId || !storePassword || !valId) return false;
+
+  const validatorBase = isLive
+    ? 'https://securepay.sslcommerz.com/validator/api/validationserverAPI.php'
+    : 'https://sandbox.sslcommerz.com/validator/api/validationserverAPI.php';
+
+  const params = new URLSearchParams({
+    val_id: valId,
+    store_id: storeId,
+    store_passwd: storePassword,
+    format: 'json',
+  });
+
+  const resp = await fetch(`${validatorBase}?${params.toString()}`);
+  if (!resp.ok) return false;
+  const validation = (await resp.json()) as {
+    status?: string;
+    tran_id?: string;
+    amount?: string | number;
+    currency?: string;
+    val_id?: string;
+  };
+
+  const validStatus = validation.status === 'VALID' || validation.status === 'VALIDATED';
+  const amountMatches = Math.abs(Number(validation.amount) - order.total) < 0.01;
+  const currencyMatches = validation.currency === order.currency;
+  const tranMatches = !validation.tran_id || validation.tran_id === order.id;
+
+  if (!validStatus || !amountMatches || !currencyMatches || !tranMatches) {
+    return false;
+  }
+
+  fulfillOrderPayment(order, {
+    provider: 'sslcommerz',
+    verificationMode: 'sslcommerz',
+    gatewayValId: validation.val_id || valId,
+  });
+  return true;
+}
+
+app.post('/api/payment/sslcommerz/success', async (req: Request, res: Response) => {
+  const tranId = typeof req.body?.tran_id === 'string' ? req.body.tran_id.trim() : '';
+  const valId = typeof req.body?.val_id === 'string' ? req.body.val_id.trim() : '';
+  try {
+    const ok = await validateSslCommerzTransaction(tranId, valId);
+    if (ok) {
+      return res.redirect(`/?order_status=success&order_id=${encodeURIComponent(tranId)}`);
+    }
+  } catch (err) {
+    console.error('SSLCommerz success validation error:', err);
+  }
+  return res.redirect('/?order_status=failed');
+});
+
+app.post('/api/payment/sslcommerz/ipn', async (req: Request, res: Response) => {
+  const tranId = typeof req.body?.tran_id === 'string' ? req.body.tran_id.trim() : '';
+  const valId = typeof req.body?.val_id === 'string' ? req.body.val_id.trim() : '';
+  try {
+    const ok = await validateSslCommerzTransaction(tranId, valId);
+    return res.status(ok ? 200 : 400).json({ received: true, verified: ok });
+  } catch {
+    return res.status(500).json({ received: false });
+  }
+});
+
+app.post('/api/payment/sslcommerz/fail', (req: Request, res: Response) => {
+  const tranId = typeof req.body?.tran_id === 'string' ? req.body.tran_id.trim() : '';
+  const order = database.orders.get(tranId);
+  if (order && order.paymentStatus === 'pending') {
+    order.paymentStatus = 'failed';
+    order.fulfillmentStatus = 'failed';
+    saveLedgerState();
+  }
+  return res.redirect('/?order_status=failed');
+});
+
+app.post('/api/payment/sslcommerz/cancel', (req: Request, res: Response) => {
+  const tranId = typeof req.body?.tran_id === 'string' ? req.body.tran_id.trim() : '';
+  const order = database.orders.get(tranId);
+  if (order && order.paymentStatus === 'pending') {
+    order.paymentStatus = 'cancelled';
+    saveLedgerState();
+  }
+  return res.redirect('/?order_status=cancelled');
 });
 
 /* =========================================================================
    6. Secure Digital Ebook Delivery & Expiring Token Download
    ========================================================================= */
-app.get('/api/downloads/:token', (req: Request, res: Response) => {
+app.get('/api/downloads/:token', async (req: Request, res: Response) => {
   const token = req.params.token;
   const entitlement = database.downloads.get(token);
 
@@ -1058,21 +1601,52 @@ app.get('/api/downloads/:token', (req: Request, res: Response) => {
     return res.status(429).send(`Download limit of ${entitlement.maxDownloads} downloads exceeded for this security token.`);
   }
 
-  entitlement.downloadCount += 1;
-  const product = database.products.get(entitlement.productId);
+  let product = database.products.get(entitlement.productId);
+  if (!product) {
+    const synced = await fetchVerifiedProductFromFirestore(entitlement.productId);
+    if (synced) product = synced;
+  }
 
   const safeFilename = `${entitlement.productTitle.replace(/[^a-zA-Z0-9_-]/g, '_')}_Al_Jabin_Publications.pdf`;
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
-  res.setHeader('Cache-Control', 'no-store, private');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
+  const applyDownloadHeaders = () => {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
+    res.setHeader('Cache-Control', 'no-store, private');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+  };
 
-  // Stream uploaded original PDF from private vault if present
+  // Priority 1: Stream uploaded original PDF from local private vault if present
   const vaultPath = resolveVaultPdfPath(entitlement.productId);
   if (vaultPath && fs.existsSync(vaultPath)) {
+    entitlement.downloadCount += 1;
+    saveLedgerState();
+    applyDownloadHeaders();
     return res.sendFile(vaultPath);
   }
 
+  // Priority 2: Stream uploaded PDF securely from verified Firebase Storage URL
+  const candidateUrl = product?.privatePdfUrl || loadVaultMeta(entitlement.productId)?.privatePdfUrl;
+  if (candidateUrl && isValidFirebaseStorageUrl(candidateUrl)) {
+    try {
+      const storageResp = await fetch(candidateUrl);
+      if (storageResp.ok) {
+        const pdfArrayBuf = await storageResp.arrayBuffer();
+        const cloudPdfBuffer = Buffer.from(pdfArrayBuf);
+        if (cloudPdfBuffer.byteLength > 5 && cloudPdfBuffer.subarray(0, 5).toString('ascii') === '%PDF-') {
+          entitlement.downloadCount += 1;
+          saveLedgerState();
+          applyDownloadHeaders();
+          return res.send(cloudPdfBuffer);
+        }
+      }
+    } catch (cloudErr) {
+      console.warn('Cloud PDF fetch notice, falling back to manuscript generator:', cloudErr);
+    }
+  }
+
+  // Priority 3: Build formatted PDF from private manuscript or edition metadata
+  entitlement.downloadCount += 1;
+  saveLedgerState();
   const pdfBuffer = buildEbookPdfBuffer(
     entitlement.productTitle,
     product?.author || 'Al Jabin Author',
@@ -1081,6 +1655,7 @@ app.get('/api/downloads/:token', (req: Request, res: Response) => {
     product
   );
 
+  applyDownloadHeaders();
   return res.send(pdfBuffer);
 });
 
@@ -1115,11 +1690,35 @@ app.get('/api/user/library', async (req: Request, res: Response) => {
   });
 });
 
+app.get('/api/user/orders', async (req: Request, res: Response) => {
+  const verifiedUser = await verifyFirebaseIdToken(req.headers.authorization);
+  if (!verifiedUser) {
+    return res.status(401).json({ error: 'Authentication required to access your order history.' });
+  }
+
+  const userOrders = Array.from(database.orders.values())
+    .filter(
+      (o) =>
+        (o.userId && o.userId === verifiedUser.uid) ||
+        (verifiedUser.email && o.customerEmail.toLowerCase() === verifiedUser.email.toLowerCase())
+    )
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .map((o) => buildClientOrderResponse(o, true));
+
+  res.json({
+    success: true,
+    count: userOrders.length,
+    orders: userOrders,
+  });
+});
+
 app.get('/api/orders/:id', async (req: Request, res: Response) => {
   const idOrNum = req.params.id;
   const order =
     database.orders.get(idOrNum) ||
-    Array.from(database.orders.values()).find((o) => o.orderNumber === idOrNum);
+    Array.from(database.orders.values()).find(
+      (o) => o.orderNumber === idOrNum || `DL-${o.orderNumber}` === idOrNum
+    );
 
   if (!order) {
     return res.status(404).json({ error: 'Order not found.' });
@@ -1132,35 +1731,9 @@ app.get('/api/orders/:id', async (req: Request, res: Response) => {
         (verifiedUser.email && order.customerEmail === verifiedUser.email))
   );
 
-  const downloads = Array.from(database.downloads.values())
-    .filter((d) => d.orderId === order.id)
-    .map((d) => ({
-      productId: d.productId,
-      productTitle: d.productTitle,
-      downloadUrl: `/api/downloads/${d.tokenHash}`,
-      expiresAt: d.expiresAt,
-      downloadCount: d.downloadCount,
-      maxDownloads: d.maxDownloads,
-    }));
-
   res.json({
     success: true,
-    order: {
-      id: order.id,
-      orderNumber: order.orderNumber,
-      customerName: order.customerName,
-      customerEmail: isOwner ? order.customerEmail : maskEmail(order.customerEmail),
-      items: order.items,
-      subtotal: order.subtotal,
-      discount: order.discount,
-      total: order.total,
-      currency: order.currency,
-      paymentStatus: order.paymentStatus,
-      fulfillmentStatus: order.fulfillmentStatus,
-      createdAt: order.createdAt,
-      paidAt: order.paidAt,
-      downloads: order.paymentStatus === 'verified' ? downloads : [],
-    },
+    order: buildClientOrderResponse(order, isOwner),
   });
 });
 

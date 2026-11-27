@@ -46,7 +46,9 @@
         "ownerId": { "type": "string", "description": "Firebase Auth UID of owning author", "maxLength": 128 },
         "manuscriptContent": { "type": "string", "description": "Full private ebook text", "maxLength": 300000 },
         "originalFileName": { "type": "string", "description": "Uploaded PDF/text filename", "maxLength": 180 },
-        "hasUploadedPdf": { "type": "boolean", "description": "Whether a binary PDF was uploaded to protected server storage" },
+        "hasUploadedPdf": { "type": "boolean", "description": "Whether a binary PDF was uploaded to protected server or cloud storage" },
+        "privatePdfUrl": { "type": "string", "description": "Protected Firebase Storage download URL for server-authorized PDF streaming", "maxLength": 512 },
+        "pdfStoragePath": { "type": "string", "description": "Private Firebase Storage object path", "maxLength": 256 },
         "updatedAt": { "type": "string", "description": "ISO timestamp of last update", "maxLength": 64 }
       },
       "required": ["ownerId", "updatedAt"]
@@ -85,7 +87,8 @@
         "discount": { "type": "number", "description": "Discount applied from coupons" },
         "total": { "type": "number", "description": "Final server-calculated charge" },
         "currency": { "type": "string", "enum": ["BDT", "USD"], "description": "Order currency" },
-        "paymentProvider": { "type": "string", "enum": ["direct"], "description": "Payment channel" },
+        "paymentProvider": { "type": "string", "enum": ["direct", "sslcommerz", "free_claim", "sandbox"], "description": "Payment verification channel" },
+        "gatewayValId": { "type": "string", "description": "Automated gateway validation transaction reference", "maxLength": 128 },
         "paymentStatus": { "type": "string", "enum": ["pending", "verified", "failed", "cancelled"], "description": "Payment verification state" },
         "fulfillmentStatus": { "type": "string", "enum": ["pending", "fulfilled", "failed"], "description": "Digital delivery state" },
         "createdAt": { "type": "string", "description": "ISO timestamp of creation" },

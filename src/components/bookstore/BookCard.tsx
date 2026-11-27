@@ -1,14 +1,15 @@
 import React from 'react';
 import { Book } from '../../types';
 import { useStore } from '../../context/StoreContext';
-import { ShoppingBag, Eye, BookOpen } from 'lucide-react';
+import { ShoppingBag, Eye, BookOpen, Download } from 'lucide-react';
 
 interface BookCardProps {
   book: Book;
 }
 
 export const BookCard: React.FC<BookCardProps> = ({ book }) => {
-  const { addToCart, setSelectedBook, setPreviewSampleBook } = useStore();
+  const { addToCart, quickAcquireFreeBook, setSelectedBook, setPreviewSampleBook } = useStore();
+  const isFree = book.price === 0;
 
   return (
     <article className="group bg-white flex flex-col justify-between border border-[#E8E9F0] hover:border-[#171D50]/40 rounded-2xl overflow-hidden shadow-xs hover:shadow-md transition-all duration-300">
@@ -16,12 +17,12 @@ export const BookCard: React.FC<BookCardProps> = ({ book }) => {
       {/* Top Media Container */}
       <div className="relative p-6 pb-2 bg-[#FAFAFC] flex flex-col items-center justify-center overflow-hidden rounded-t-2xl">
         {/* Clean Editorial Kicker (Zero pill boxes) */}
-        {(book.isNewRelease || book.discountPercentage) && (
+        {(book.isNewRelease || book.discountPercentage || isFree) && (
           <div className="w-full flex items-center justify-between text-[10px] uppercase tracking-[0.16em] font-semibold mb-1">
-            <span className="text-[#171D50]">
-              {book.isNewRelease ? 'New Release' : ''}
+            <span className={isFree ? 'text-emerald-700' : 'text-[#171D50]'}>
+              {isFree ? 'Free Edition' : book.isNewRelease ? 'New Release' : ''}
             </span>
-            {book.discountPercentage && (
+            {book.discountPercentage && !isFree && (
               <span className="text-emerald-700 tabular-nums">
                 {book.discountPercentage}% Off
               </span>
@@ -74,10 +75,10 @@ export const BookCard: React.FC<BookCardProps> = ({ book }) => {
         {/* Pricing & Action Buttons */}
         <div className="pt-3 border-t border-[#F0F1F5] flex items-center justify-between gap-2">
           <div className="flex items-baseline gap-2 tabular-nums">
-            <span className="text-lg font-extrabold tracking-tight text-[#171D50]">
-              {book.price === 0 ? 'Free' : `৳${book.price}`}
+            <span className={`text-lg font-extrabold tracking-tight ${isFree ? 'text-emerald-700' : 'text-[#171D50]'}`}>
+              {isFree ? 'Free' : `৳${book.price}`}
             </span>
-            {book.originalPrice && (
+            {book.originalPrice && !isFree && (
               <span className="text-xs text-[#686B78] line-through font-light">
                 ৳{book.originalPrice}
               </span>
@@ -101,14 +102,25 @@ export const BookCard: React.FC<BookCardProps> = ({ book }) => {
             >
               <Eye className="w-4 h-4" />
             </button>
-            <button
-              onClick={() => addToCart(book, 1)}
-              className="min-h-[38px] px-3.5 py-1.5 bg-[#171D50] text-white text-xs font-medium tracking-wide hover:bg-[#0f1338] rounded-full transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs hover:shadow-xs whitespace-nowrap"
-              aria-label={`Add ${book.title} to bag`}
-            >
-              <ShoppingBag className="w-3.5 h-3.5" />
-              <span>Add</span>
-            </button>
+            {isFree ? (
+              <button
+                onClick={() => quickAcquireFreeBook(book)}
+                className="min-h-[38px] px-3.5 py-1.5 bg-emerald-700 text-white text-xs font-semibold tracking-wide hover:bg-emerald-800 rounded-full transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs hover:shadow-xs whitespace-nowrap"
+                aria-label={`Get free PDF for ${book.title}`}
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Get Free</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => addToCart(book, 1)}
+                className="min-h-[38px] px-3.5 py-1.5 bg-[#171D50] text-white text-xs font-medium tracking-wide hover:bg-[#0f1338] rounded-full transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs hover:shadow-xs whitespace-nowrap"
+                aria-label={`Add ${book.title} to bag`}
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>Add</span>
+              </button>
+            )}
           </div>
         </div>
 

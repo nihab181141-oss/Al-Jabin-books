@@ -28,9 +28,13 @@ body {
   font-feature-settings: "ss01" on, "cv02" on;
 }
 
-h1, h2, h3 {
+h1, h2, h3, h4 {
   font-family: var(--font-display);
   text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
 }
 
 /* Explicit font utility classes */

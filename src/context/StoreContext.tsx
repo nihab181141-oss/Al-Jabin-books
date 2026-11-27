@@ -15,6 +15,7 @@ import {
 import {
   auth,
   db,
+  storage,
   googleProvider,
   OperationType,
   handleFirestoreError,
@@ -40,6 +41,7 @@ import {
   deleteDoc,
   where,
 } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 export const BRAND_ASSETS = {
   STACKED_COLOR: '/assets/aistudio/al-jabin-publications-stacked-color_6753ceee.svg',
@@ -67,6 +69,7 @@ interface StoreContextType {
     updates: {
       title?: string;
       subtitle?: string;
+      pricingMode?: 'free' | 'paid';
       price?: number;
       category?: 'Personal Growth' | 'Mindset' | 'Productivity' | 'Fiction';
       description?: string;
@@ -75,9 +78,10 @@ interface StoreContextType {
   deletePublishedBook: (bookId: string) => Promise<void>;
   fetchAuthorSalesStats: () => Promise<AuthorSalesData>;
 
-  // Cart
+  // Cart & Free Quick-Acquire
   cart: CartItem[];
   addToCart: (book: Book, qty?: number) => void;
+  quickAcquireFreeBook: (book: Book) => void;
   removeFromCart: (bookId: string) => void;
   updateQuantity: (bookId: string, quantity: number) => void;
   clearCart: () => void;
@@ -95,8 +99,8 @@ interface StoreContextType {
     customerEmail: string;
     customerPhone: string;
     paymentMethod: PaymentMethod;
-    transactionId?: string;
-  }) => Promise<{ order: Order }>;
+    onProgress?: (stage: 'creating' | 'initiating' | 'verifying' | 'unlocking') => void;
+  }) => Promise<{ order: Order; redirectUrl?: string }>;
   lookupOrder: (orderId: string) => Promise<Order | undefined>;
   confirmedOrder: Order | null;
   setConfirmedOrder: (order: Order | null) => void;
@@ -123,6 +127,9 @@ interface StoreContextType {
   logoutUser: () => Promise<void>;
   userLibrary: EntitledDownload[];
   refreshUserLibrary: () => Promise<void>;
+  userOrders: Order[];
+  loadingUserOrders: boolean;
+  refreshUserOrders: () => Promise<Order[]>;
 
   // Newsletter
   subscribers: Subscriber[];
@@ -250,6 +257,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [userProfile, setUserProfile] = useState<CustomerProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [userLibrary, setUserLibrary] = useState<EntitledDownload[]>([]);
+  const [userOrders, setUserOrders] = useState<Order[]>([]);
+  const [loadingUserOrders, setLoadingUserOrders] = useState(false);
 
   const [subscribers, setSubscribers] = useState<Subscriber[]>(() => {
     try {
@@ -308,6 +317,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (auth.currentUser && book.ownerId === auth.currentUser.uid) {
         const authHeaders = await getAuthHeaders();
         if (authHeaders.Authorization) {
+          let privateFields: {
+            manuscriptContent?: string;
+            privatePdfUrl?: string;
+            pdfStoragePath?: string;
+          } = {};
+          try {
+            const privSnap = await getDoc(doc(db, 'products', book.id, 'private', 'manuscript'));
+            if (privSnap.exists()) {
+              const pData = privSnap.data() as Record<string, any>;
+              if (typeof pData.manuscriptContent === 'string') {
+                privateFields.manuscriptContent = pData.manuscriptContent;
+              }
+              if (typeof pData.privatePdfUrl === 'string') {
+                privateFields.privatePdfUrl = pData.privatePdfUrl;
+              }
+              if (typeof pData.pdfStoragePath === 'string') {
+                privateFields.pdfStoragePath = pData.pdfStoragePath;
+              }
+            }
+          } catch {}
+
           await fetch('/api/products', {
             method: 'POST',
             headers: {
@@ -331,7 +361,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               isbn: book.isbn,
               keyTakeaways: book.keyTakeaways,
               sampleChapters: book.sampleChapters,
-              manuscriptContent: book.manuscriptContent,
+              manuscriptContent: book.manuscriptContent || privateFields.manuscriptContent,
+              ...(privateFields.privatePdfUrl ? { privatePdfUrl: privateFields.privatePdfUrl } : {}),
+              ...(privateFields.pdfStoragePath ? { pdfStoragePath: privateFields.pdfStoragePath } : {}),
               isPublished: true,
               isFeatured: book.isFeatured,
               isNewRelease: book.isNewRelease,
@@ -492,9 +524,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           );
         }
         loadUserLibrary();
+        loadUserOrders();
       } else {
         setUserProfile(null);
         setUserLibrary([]);
+        setUserOrders([]);
       }
       setAuthLoading(false);
     });
@@ -525,6 +559,61 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const loadUserOrders = async (): Promise<Order[]> => {
+    if (!auth.currentUser) {
+      setUserOrders([]);
+      return [];
+    }
+    setLoadingUserOrders(true);
+    try {
+      const authHeaders = await getAuthHeaders();
+      let serverOrders: Order[] = [];
+      if (authHeaders.Authorization) {
+        const res = await fetch('/api/user/orders', { headers: authHeaders });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.orders)) {
+            serverOrders = data.orders as Order[];
+          }
+        }
+      }
+
+      const signedInEmail = auth.currentUser.email?.toLowerCase();
+      const mergedMap = new Map<string, Order>();
+      for (const srvOrder of serverOrders) {
+        mergedMap.set(srvOrder.id, srvOrder);
+      }
+      if (signedInEmail) {
+        for (const localOrder of orders) {
+          if (
+            localOrder.customerEmail?.toLowerCase() === signedInEmail &&
+            !mergedMap.has(localOrder.id)
+          ) {
+            mergedMap.set(localOrder.id, localOrder);
+          }
+        }
+      }
+
+      const mergedList = Array.from(mergedMap.values()).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      setUserOrders(mergedList);
+      return mergedList;
+    } catch (e) {
+      console.warn('Failed to fetch user order history:', e);
+      return [];
+    } finally {
+      setLoadingUserOrders(false);
+    }
+  };
+
+  const refreshUserOrders = async (): Promise<Order[]> => {
+    if (auth.currentUser) {
+      return await loadUserOrders();
+    }
+    return [];
+  };
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
@@ -544,6 +633,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             showToast('Payment verified! Your digital volume is available for instant download.');
             if (currentUser?.email) {
               refreshUserLibrary();
+              refreshUserOrders();
             }
           }
         })
@@ -581,7 +671,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '')
         .slice(0, 180) || bookId;
-    const priceBDT = Math.max(0, Math.min(100000, Math.round(Number(input.price) || 0)));
+    const isFreeMode = input.pricingMode === 'free' || Number(input.price) <= 0;
+    const priceBDT = isFreeMode
+      ? 0
+      : Math.max(1, Math.min(100000, Math.round(Number(input.price) || 0)));
     const priceUSD = Number((priceBDT / 115).toFixed(2));
     const coverImage =
       input.coverImage && input.coverImage.trim().length > 0
@@ -607,10 +700,36 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const pages = Math.max(1, Math.min(10000, Math.round(Number(input.pages) || 24)));
     const isbn = (input.isbn || `AJP-${Date.now().toString().slice(-6)}`).trim().slice(0, 64);
     const manuscriptContent = input.manuscriptContent ? input.manuscriptContent.trim().slice(0, 300000) : '';
-    const approxKB = input.uploadedPdfBase64
+    const approxKB = input.uploadedPdfFile
+      ? Math.max(120, Math.round(input.uploadedPdfFile.size / 1024))
+      : input.uploadedPdfBase64
       ? Math.max(240, Math.round((input.uploadedPdfBase64.length * 0.75) / 1024))
       : Math.max(240, Math.round((manuscriptContent.length + coverImage.length) / 1024));
     const fileSize = approxKB > 1024 ? `${(approxKB / 1024).toFixed(1)} MB` : `${approxKB} KB`;
+
+    // Upload binary PDF to private Firebase Storage (/ebooks/{uid}/{bookId}.pdf) when provided
+    let privatePdfUrl: string | undefined;
+    let pdfStoragePath: string | undefined;
+    if (input.uploadedPdfFile) {
+      try {
+        const storagePath = `ebooks/${currentUser.uid}/${bookId}.pdf`;
+        const fileRef = ref(storage, storagePath);
+        await uploadBytes(fileRef, input.uploadedPdfFile, {
+          contentType: 'application/pdf',
+          customMetadata: {
+            bookId,
+            ownerId: currentUser.uid,
+          },
+        });
+        const downloadUrl = await getDownloadURL(fileRef);
+        if (downloadUrl && downloadUrl.length <= 512) {
+          privatePdfUrl = downloadUrl;
+          pdfStoragePath = storagePath;
+        }
+      } catch (storageErr) {
+        console.warn('Cloud PDF storage upload notice (using secure server vault):', storageErr);
+      }
+    }
 
     const newBook: Book = {
       id: bookId,
@@ -619,6 +738,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ...(input.subtitle?.trim() ? { subtitle: input.subtitle.trim().slice(0, 240) } : {}),
       author: cleanAuthor,
       category: input.category,
+      pricingMode: priceBDT === 0 ? 'free' : 'paid',
       price: priceBDT,
       priceUSD,
       isNewRelease: true,
@@ -633,14 +753,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       description: cleanDesc,
       keyTakeaways,
       sampleChapters,
-      hasUploadedPdf: Boolean(input.uploadedPdfBase64),
+      hasUploadedPdf: Boolean(input.uploadedPdfBase64 || privatePdfUrl),
       downloadFileKey: bookId,
       createdAt: now,
     };
 
     const authHeaders = await getAuthHeaders();
 
-    // 1. Sync immediately with server runtime (vault stores private PDF & manuscript privately)
+    // 1. Sync immediately with server runtime (vault stores private PDF & cloud URL privately)
     const serverRes = await fetch('/api/products', {
       method: 'POST',
       headers: {
@@ -651,6 +771,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ...newBook,
         ...(manuscriptContent ? { manuscriptContent } : {}),
         ...(input.uploadedPdfBase64 ? { uploadedPdfBase64: input.uploadedPdfBase64 } : {}),
+        ...(privatePdfUrl ? { privatePdfUrl } : {}),
+        ...(pdfStoragePath ? { pdfStoragePath } : {}),
         priceBDT,
         slug,
         shortDescription: cleanDesc.slice(0, 300),
@@ -663,7 +785,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       throw new Error(errData.error || 'Failed to register ebook with publishing server.');
     }
 
-    // 2. Persist public metadata ONLY to /products/{bookId} (NO manuscriptContent!)
+    // 2. Persist public metadata ONLY to /products/{bookId} (NO manuscriptContent or privatePdfUrl!)
     const firestorePayload: Record<string, any> = {
       ownerId: currentUser.uid,
       title: newBook.title,
@@ -696,17 +818,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       try {
         await setDoc(doc(db, 'products', bookId), firestorePayload);
-        // Persist private manuscript text in owner-only subcollection
-        if (manuscriptContent || input.uploadedFileName || input.uploadedPdfBase64) {
+        // Persist private manuscript text and cloud PDF URL strictly inside owner-only subcollection
+        if (manuscriptContent || input.uploadedFileName || input.uploadedPdfBase64 || privatePdfUrl) {
           const privatePayload: Record<string, any> = {
             ownerId: currentUser.uid,
-            hasUploadedPdf: Boolean(input.uploadedPdfBase64),
+            hasUploadedPdf: Boolean(input.uploadedPdfBase64 || privatePdfUrl),
             updatedAt: now,
           };
           if (manuscriptContent) privatePayload.manuscriptContent = manuscriptContent;
           if (input.uploadedFileName) {
             privatePayload.originalFileName = input.uploadedFileName.trim().slice(0, 180);
           }
+          if (privatePdfUrl) privatePayload.privatePdfUrl = privatePdfUrl;
+          if (pdfStoragePath) privatePayload.pdfStoragePath = pdfStoragePath;
           await setDoc(doc(db, 'products', bookId, 'private', 'manuscript'), privatePayload);
         }
       } catch (err) {
@@ -741,6 +865,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       },
     }).catch(() => {});
 
+    // Clean up private Firebase Storage object if uploaded
+    await deleteObject(ref(storage, `ebooks/${currentUser.uid}/${bookId}.pdf`)).catch(() => {});
+
     try {
       // Delete private subcollection document first while parent product doc exists for Master Gate rule check
       await deleteDoc(doc(db, 'products', bookId, 'private', 'manuscript')).catch(() => {});
@@ -763,6 +890,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     updates: {
       title?: string;
       subtitle?: string;
+      pricingMode?: 'free' | 'paid';
       price?: number;
       category?: 'Personal Growth' | 'Mindset' | 'Productivity' | 'Fiction';
       description?: string;
@@ -779,10 +907,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const nextTitle = updates.title?.trim().slice(0, 180) || existing.title;
     const nextSubtitle =
       updates.subtitle !== undefined ? updates.subtitle.trim().slice(0, 240) : existing.subtitle;
+    const rawPrice = updates.price !== undefined ? Number(updates.price) || 0 : existing.price;
     const nextPrice =
-      updates.price !== undefined
-        ? Math.max(0, Math.min(100000, Math.round(Number(updates.price) || 0)))
-        : existing.price;
+      updates.pricingMode === 'free'
+        ? 0
+        : Math.max(0, Math.min(100000, Math.round(rawPrice)));
     const nextPriceUSD = Number((nextPrice / 115).toFixed(2));
     const nextCategory = updates.category || existing.category;
     const nextDesc = updates.description?.trim().slice(0, 5000) || existing.description;
@@ -790,6 +919,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ...existing,
       title: nextTitle,
       ...(nextSubtitle ? { subtitle: nextSubtitle } : { subtitle: undefined }),
+      pricingMode: nextPrice === 0 ? 'free' : 'paid',
       price: nextPrice,
       priceUSD: nextPriceUSD,
       category: nextCategory,
@@ -822,7 +952,13 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     setBooks((prev) => prev.map((b) => (b.id === bookId ? updatedBook : b)));
-    showToast(`Updated "${nextTitle}".`);
+    setCart((prev) =>
+      prev.map((c) => (c.book.id === bookId ? { ...c, book: updatedBook } : c))
+    );
+    if (selectedBook?.id === bookId) {
+      setSelectedBook(updatedBook);
+    }
+    showToast(`Updated "${nextTitle}" (${nextPrice === 0 ? 'Free Edition' : `৳${nextPrice}`}).`);
   };
 
   const fetchAuthorSalesStats = async (): Promise<AuthorSalesData> => {
@@ -874,6 +1010,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast(`Added "${book.title}" to bag.`);
   };
 
+  // Instant 1-step free edition checkout trigger
+  const quickAcquireFreeBook = (book: Book) => {
+    setSelectedBook(null);
+    if (cart.length === 0 || (cart.length === 1 && cart[0].book.id === book.id)) {
+      setCart([{ book, quantity: 1 }]);
+      setIsCartOpen(false);
+      setIsCheckoutOpen(true);
+    } else {
+      addToCart(book, 1);
+      setIsCartOpen(true);
+    }
+  };
+
   const removeFromCart = (bookId: string) => {
     setCart((prev) => prev.filter((item) => item.book.id !== bookId));
   };
@@ -923,20 +1072,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setActiveCoupon(null);
   };
 
-  // Orders creation
+  // Two-path Order Creation: Instant Free Claim (total === 0) OR Automated Gateway Verification (total > 0)
   const createOrder = async ({
     customerName,
     customerEmail,
     customerPhone,
     paymentMethod,
-    transactionId,
+    onProgress,
   }: {
     customerName: string;
     customerEmail: string;
     customerPhone: string;
     paymentMethod: PaymentMethod;
-    transactionId?: string;
-  }): Promise<{ order: Order }> => {
+    onProgress?: (stage: 'creating' | 'initiating' | 'verifying' | 'unlocking') => void;
+  }): Promise<{ order: Order; redirectUrl?: string }> => {
+    onProgress?.('creating');
     await Promise.all(cart.map((c) => syncBookToServer(c.book)));
     const authHeaders = await getAuthHeaders();
 
@@ -950,6 +1100,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         customerName,
         customerEmail,
         customerPhone,
+        paymentMethod,
         items: cart.map((c) => ({
           id: c.book.id,
           title: c.book.title,
@@ -965,7 +1116,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       throw new Error(data.error || 'Failed to initialize order on server.');
     }
 
-    const newOrder: Order = {
+    const baseOrder: Order = {
       id: data.orderId,
       orderNumber: data.orderNumber,
       createdAt: new Date().toISOString(),
@@ -984,40 +1135,106 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       couponCode: activeCoupon?.code,
       total: data.total,
       currency: data.currency,
-      paymentMethod,
+      paymentMethod: data.requiresPayment ? paymentMethod : 'free',
       paymentStatus: 'pending',
       fulfillmentStatus: 'pending',
-      transactionId: transactionId || `TXN-${data.orderNumber}`,
       downloadAccessCode: `DL-${data.orderNumber}`,
     };
 
-    try {
-      await fetch('/api/payment/confirm-test', {
+    // PATH A: Free Edition (total === 0) -> Instant Server Claim & Immediate PDF Unlock
+    if (!data.requiresPayment) {
+      onProgress?.('unlocking');
+      const freeRes = await fetch('/api/orders/free-claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: newOrder.id }),
+        body: JSON.stringify({ orderId: data.orderId }),
       });
-      const detailRes = await fetch(`/api/orders/${encodeURIComponent(newOrder.id)}`, {
-        headers: authHeaders,
-      });
-      if (detailRes.ok) {
-        const detailJson = await detailRes.json();
-        if (detailJson.success && detailJson.order?.downloads) {
-          newOrder.downloads = detailJson.order.downloads;
-        }
+      const freeData = await freeRes.json();
+      if (!freeRes.ok || !freeData.success || !freeData.order) {
+        throw new Error(freeData.error || 'Could not claim free PDF edition.');
       }
-      newOrder.paymentStatus = 'verified';
-      newOrder.fulfillmentStatus = 'fulfilled';
-    } catch {}
 
-    setOrders((prev) => [newOrder, ...prev]);
+      const fulfilledOrder: Order = {
+        ...baseOrder,
+        ...freeData.order,
+        paymentStatus: 'verified',
+        fulfillmentStatus: 'fulfilled',
+        verificationMode: 'free',
+      };
+
+      setOrders((prev) => [fulfilledOrder, ...prev]);
+      clearCart();
+      setConfirmedOrder(fulfilledOrder);
+      setIsCheckoutOpen(false);
+      if (currentUser?.email) {
+        refreshUserLibrary();
+        refreshUserOrders();
+      }
+      showToast('Free PDF unlocked! Click Download PDF to save your copy.');
+      return { order: fulfilledOrder };
+    }
+
+    // PATH B: Paid Edition (total > 0) -> Automated Payment Gateway Initiation & Verification
+    onProgress?.('initiating');
+    const initRes = await fetch('/api/payment/initiate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderId: data.orderId,
+        paymentMethod,
+      }),
+    });
+    const initData = await initRes.json();
+    if (!initRes.ok || !initData.success) {
+      throw new Error(initData.error || 'Unable to initiate automated payment gateway.');
+    }
+
+    // Real SSLCommerz Hosted Redirect Mode
+    if (initData.mode === 'sslcommerz' && initData.gatewayUrl) {
+      setOrders((prev) => [baseOrder, ...prev]);
+      return { order: baseOrder, redirectUrl: initData.gatewayUrl };
+    }
+
+    // Automated Sandbox Gateway Verification Mode
+    if (!initData.verificationToken) {
+      throw new Error('Gateway verification token was not issued by server.');
+    }
+
+    onProgress?.('verifying');
+    await new Promise((resolve) => setTimeout(resolve, 450));
+
+    onProgress?.('unlocking');
+    const verifyRes = await fetch('/api/payment/verify-automated', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderId: data.orderId,
+        verificationToken: initData.verificationToken,
+        paymentMethod,
+      }),
+    });
+    const verifyData = await verifyRes.json();
+    if (!verifyRes.ok || !verifyData.success || !verifyData.order) {
+      throw new Error(verifyData.error || 'Automated payment verification could not complete.');
+    }
+
+    const verifiedOrder: Order = {
+      ...baseOrder,
+      ...verifyData.order,
+      paymentStatus: 'verified',
+      fulfillmentStatus: 'fulfilled',
+    };
+
+    setOrders((prev) => [verifiedOrder, ...prev]);
     clearCart();
-    setConfirmedOrder(newOrder);
+    setConfirmedOrder(verifiedOrder);
     setIsCheckoutOpen(false);
     if (currentUser?.email) {
       refreshUserLibrary();
+      refreshUserOrders();
     }
-    return { order: newOrder };
+    showToast('Payment automatically verified! Your PDF download is ready.');
+    return { order: verifiedOrder };
   };
 
   const lookupOrder = async (orderId: string): Promise<Order | undefined> => {
@@ -1191,8 +1408,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updatePublishedBook,
         deletePublishedBook,
         fetchAuthorSalesStats,
+        // Cart
         cart,
         addToCart,
+        quickAcquireFreeBook,
         removeFromCart,
         updateQuantity,
         clearCart,
@@ -1222,6 +1441,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         logoutUser,
         userLibrary,
         refreshUserLibrary,
+        userOrders,
+        loadingUserOrders,
+        refreshUserOrders,
         subscribers,
         subscribeNewsletter,
         logoStackedColor: BRAND_ASSETS.STACKED_COLOR,

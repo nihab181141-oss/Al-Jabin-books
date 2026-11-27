@@ -37,6 +37,7 @@ export interface Book {
   sampleChapters: SampleChapter[];
   manuscriptContent?: string;
   hasUploadedPdf?: boolean;
+  pricingMode?: 'free' | 'paid';
   downloadFileKey: string;
   createdAt?: string;
 }
@@ -46,6 +47,7 @@ export interface PublishBookInput {
   subtitle?: string;
   author: string;
   category: 'Personal Growth' | 'Mindset' | 'Productivity' | 'Fiction';
+  pricingMode?: 'free' | 'paid';
   price: number;
   format: string;
   pages: number;
@@ -57,6 +59,7 @@ export interface PublishBookInput {
   sampleExcerpt?: string;
   manuscriptContent?: string;
   uploadedPdfBase64?: string;
+  uploadedPdfFile?: File;
   uploadedFileName?: string;
   coverImage?: string;
 }
@@ -66,7 +69,7 @@ export interface CartItem {
   quantity: number;
 }
 
-export type PaymentMethod = 'bkash' | 'nagad' | 'rocket' | 'card' | 'international';
+export type PaymentMethod = 'bkash' | 'nagad' | 'rocket' | 'card' | 'international' | 'free';
 
 export interface OrderItem {
   bookId: string;
@@ -104,6 +107,8 @@ export interface Order {
   paymentMethod: PaymentMethod;
   paymentStatus: 'pending' | 'verified' | 'failed' | 'cancelled';
   fulfillmentStatus?: 'pending' | 'fulfilled' | 'failed';
+  verificationMode?: 'free' | 'sslcommerz' | 'sandbox';
+  gatewayValId?: string;
   transactionId?: string;
   downloadAccessCode: string;
   downloads?: EntitledDownload[];

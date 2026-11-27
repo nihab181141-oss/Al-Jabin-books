@@ -39,19 +39,16 @@ export const Hero: React.FC<HeroProps> = ({
         {/* Side-by-Side Hero Split */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
           {/* LEFT: Editorial Statement & Primary Actions */}
-          <div className="lg:col-span-6 space-y-6 text-center lg:text-left">
+          <div className="lg:col-span-7 space-y-6 text-center lg:text-left">
             <div className="inline-flex items-center gap-2.5 text-xs font-bold tracking-[0.18em] uppercase text-[#171D50]/75">
               <span>Independent Publishing House</span>
               <span aria-hidden="true" className="text-[#D97706]">·</span>
               <span>Read & Self-Publish</span>
             </div>
 
-            <h1
-              className="text-4xl sm:text-6xl xl:text-[64px] font-extrabold text-[#171923] tracking-[-0.04em] leading-[1.02]"
-              style={{ textWrap: 'balance' }}
-            >
+            <h1 className="text-[clamp(2.65rem,4.6vw+1.05rem,4.75rem)] font-extrabold text-[#171923] tracking-[-0.04em] leading-[0.98] text-balance">
               Good Books.{' '}
-              <span className="font-editorial italic font-bold text-[#171D50] underline decoration-[#D97706]/55 decoration-[3px] underline-offset-[10px]">
+              <span className="font-editorial italic font-bold text-[#171D50] underline decoration-[#D97706]/55 decoration-[3px] sm:decoration-[4px] underline-offset-[8px] sm:underline-offset-[10px]">
                 Better Perspectives.
               </span>
             </h1>
@@ -91,7 +88,7 @@ export const Hero: React.FC<HeroProps> = ({
           </div>
 
           {/* RIGHT: Free, Unboxed Illustration Stage (or Spotlight Publication when live) */}
-          <div className="lg:col-span-6 flex justify-center">
+          <div className="lg:col-span-5 flex justify-center">
             {flagshipBook ? (
               <div className="w-full max-w-xl bg-[#121638] text-white rounded-3xl p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden shadow-lg">
                 <div className="relative flex flex-col sm:flex-row gap-6 items-center sm:items-start">
@@ -110,7 +107,7 @@ export const Hero: React.FC<HeroProps> = ({
                     <div className="text-[11px] uppercase tracking-[0.2em] text-white/60 font-medium">
                       Spotlight Release · {flagshipBook.category}
                     </div>
-                    <h2 className="font-editorial text-2xl sm:text-3xl text-white font-normal leading-snug">
+                    <h2 className="font-editorial text-[clamp(1.65rem,2.2vw+0.75rem,2.35rem)] text-white font-bold tracking-[-0.02em] leading-[1.12] text-balance">
                       {flagshipBook.title}
                     </h2>
                     <p className="text-xs text-white/70">By {flagshipBook.author}</p>
@@ -163,7 +160,7 @@ export const Hero: React.FC<HeroProps> = ({
             </div>
             <div className="space-y-1 min-w-0">
               <div className="text-[11px] font-bold text-[#D97706] tracking-wide tabular-nums">01 · Specimen</div>
-              <h3 className="text-base font-extrabold tracking-tight text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
+              <h3 className="text-[clamp(1.0625rem,0.5vw+0.9rem,1.2rem)] font-extrabold tracking-tight leading-snug text-balance text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
                 <span>Reading Studio</span>
                 <ArrowRight className="w-3.5 h-3.5 opacity-50 group-hover:translate-x-0.5 group-hover:opacity-100 transition-all" />
               </h3>
@@ -183,7 +180,7 @@ export const Hero: React.FC<HeroProps> = ({
             </div>
             <div className="space-y-1 min-w-0">
               <div className="text-[11px] font-bold text-[#D97706] tracking-wide tabular-nums">02 · Authors</div>
-              <h3 className="text-base font-extrabold tracking-tight text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
+              <h3 className="text-[clamp(1.0625rem,0.5vw+0.9rem,1.2rem)] font-extrabold tracking-tight leading-snug text-balance text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
                 <span>Publish Ebook</span>
                 <ArrowRight className="w-3.5 h-3.5 opacity-50 group-hover:translate-x-0.5 group-hover:opacity-100 transition-all" />
               </h3>
@@ -203,7 +200,7 @@ export const Hero: React.FC<HeroProps> = ({
             </div>
             <div className="space-y-1 min-w-0">
               <div className="text-[11px] font-bold text-[#D97706] tracking-wide tabular-nums">03 · Account</div>
-              <h3 className="text-base font-extrabold tracking-tight text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
+              <h3 className="text-[clamp(1.0625rem,0.5vw+0.9rem,1.2rem)] font-extrabold tracking-tight leading-snug text-balance text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
                 <span>{currentUser ? 'Author Profile' : 'Sign Up / Login'}</span>
                 <ArrowRight className="w-3.5 h-3.5 opacity-50 group-hover:translate-x-0.5 group-hover:opacity-100 transition-all" />
               </h3>
@@ -223,7 +220,7 @@ export const Hero: React.FC<HeroProps> = ({
             </div>
             <div className="space-y-1 min-w-0">
               <div className="text-[11px] font-bold text-[#D97706] tracking-wide tabular-nums">04 · Access</div>
-              <h3 className="text-base font-extrabold tracking-tight text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
+              <h3 className="text-[clamp(1.0625rem,0.5vw+0.9rem,1.2rem)] font-extrabold tracking-tight leading-snug text-balance text-[#171923] flex items-center gap-1.5 group-hover:text-[#171D50] transition-colors">
                 <span>Find Order & Library</span>
                 <ArrowRight className="w-3.5 h-3.5 opacity-50 group-hover:translate-x-0.5 group-hover:opacity-100 transition-all" />
               </h3>

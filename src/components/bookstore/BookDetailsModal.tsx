@@ -4,9 +4,10 @@ import { X, ShoppingBag, BookOpen, Check, ShieldCheck, Download, Sparkles } from
 import { Book } from '../../types';
 
 export const BookDetailsModal: React.FC = () => {
-  const { selectedBook, setSelectedBook, addToCart, setPreviewSampleBook, books } = useStore();
+  const { selectedBook, setSelectedBook, addToCart, quickAcquireFreeBook, setPreviewSampleBook, books } = useStore();
 
   if (!selectedBook) return null;
+  const isFree = selectedBook.price === 0;
 
   const relatedBooks = books
     .filter((b) => b.category === selectedBook.category && b.id !== selectedBook.id)
@@ -82,15 +83,17 @@ export const BookDetailsModal: React.FC = () => {
               {/* Price Block */}
               <div className="p-4 bg-[#FAFAFC] border border-[#E8E9F0] rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
                 <div>
-                  <div className="text-[11px] uppercase tracking-wider text-[#686B78]">Digital Edition Price</div>
+                  <div className="text-[11px] uppercase tracking-wider text-[#686B78]">
+                    {isFree ? 'Instant Reader Access' : 'Digital Edition Price'}
+                  </div>
                   <div className="flex flex-wrap items-baseline gap-2.5 tabular-nums">
-                    <span className="text-2xl font-bold text-[#171D50]">
-                      {selectedBook.price === 0 ? 'Free Edition' : `৳${selectedBook.price}`}
+                    <span className={`text-2xl font-bold ${isFree ? 'text-emerald-700' : 'text-[#171D50]'}`}>
+                      {isFree ? 'Free Edition' : `৳${selectedBook.price}`}
                     </span>
-                    {selectedBook.originalPrice && (
+                    {selectedBook.originalPrice && !isFree && (
                       <span className="text-sm text-[#686B78] line-through">৳{selectedBook.originalPrice}</span>
                     )}
-                    {selectedBook.discountPercentage && (
+                    {selectedBook.discountPercentage && !isFree && (
                       <span className="text-xs font-semibold text-emerald-700">
                         · Save {selectedBook.discountPercentage}%
                       </span>
@@ -98,15 +101,25 @@ export const BookDetailsModal: React.FC = () => {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => {
-                    addToCart(selectedBook, 1);
-                  }}
-                  className="w-full sm:w-auto min-h-[44px] px-6 py-3 bg-[#171D50] text-white text-xs font-semibold tracking-wider uppercase hover:bg-[#0f1338] rounded-full transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm whitespace-nowrap"
-                >
-                  <ShoppingBag className="w-4 h-4" />
-                  <span>Add to Bag</span>
-                </button>
+                {isFree ? (
+                  <button
+                    onClick={() => quickAcquireFreeBook(selectedBook)}
+                    className="w-full sm:w-auto min-h-[44px] px-6 py-3 bg-emerald-700 text-white text-xs font-semibold tracking-wider uppercase hover:bg-emerald-800 rounded-full transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm whitespace-nowrap"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Get Free PDF Now</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      addToCart(selectedBook, 1);
+                    }}
+                    className="w-full sm:w-auto min-h-[44px] px-6 py-3 bg-[#171D50] text-white text-xs font-semibold tracking-wider uppercase hover:bg-[#0f1338] rounded-full transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm whitespace-nowrap"
+                  >
+                    <ShoppingBag className="w-4 h-4" />
+                    <span>Add to Bag</span>
+                  </button>
+                )}
               </div>
 
               {/* Description */}
@@ -167,7 +180,9 @@ export const BookDetailsModal: React.FC = () => {
                         {rel.title}
                       </div>
                       <div className="text-[11px] text-[#686B78] truncate">{rel.author}</div>
-                      <div className="text-xs font-semibold text-[#171D50] mt-0.5">৳{rel.price}</div>
+                      <div className="text-xs font-semibold text-[#171D50] mt-0.5">
+                        {rel.price === 0 ? 'Free' : `৳${rel.price}`}
+                      </div>
                     </div>
                   </div>
                 ))}
